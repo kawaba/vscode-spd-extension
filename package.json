@@ -1,0 +1,147 @@
+{
+  "name": "spd-editor",
+  "displayName": "SPD Editor",
+  "description": "SPD（構造化プログラム設計図）エディタ。.spd ファイルを方眼の画面で描いて編集できます。",
+  "version": "1.22.0",
+  "publisher": "powercampus",
+  "license": "EPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kawaba/vscode-spd-extension.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "SPD",
+    "構造化プログラム設計図",
+    "flowchart"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "spd.editor",
+        "displayName": "SPD エディタ",
+        "selector": [
+          {
+            "filenamePattern": "*.spd"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "spd",
+          "title": "SPD",
+          "icon": "icons/spd@2x.png"
+        }
+      ]
+    },
+    "views": {
+      "spd": [
+        {
+          "type": "webview",
+          "id": "spd.view",
+          "name": "SPD エディタ",
+          "icon": "icons/spd@2x.png"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "spd.newFile",
+        "title": "新規SPDファイルを作成",
+        "category": "SPD"
+      },
+      {
+        "command": "spd.newFileMenu",
+        "title": "SPD ファイル"
+      },
+      {
+        "command": "spd.openView",
+        "title": "SPDエディタを開く",
+        "category": "SPD",
+        "icon": "icons/spd@2x.png"
+      },
+      {
+        "command": "spd.openFontFolder",
+        "title": "フォントのフォルダを開く",
+        "category": "SPD"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "spd.newFile",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@9"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "spd.openView",
+          "when": "resourceLangId == python || resourceLangId == c",
+          "group": "navigation"
+        }
+      ],
+      "file/newFile": [
+        {
+          "command": "spd.newFileMenu",
+          "group": "file"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "spd.newFileMenu",
+          "when": "false"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "spd.openView",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d"
+      }
+    ],
+    "configuration": {
+      "title": "SPD Editor",
+      "properties": {
+        "spd.defaultLanguage": {
+          "type": "string",
+          "enum": [
+            "python",
+            "c"
+          ],
+          "enumItemLabels": [
+            "Python",
+            "C"
+          ],
+          "default": "python",
+          "markdownDescription": "言語が書かれていない（空の）ファイルや SPD ビューを開いたときの言語。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0"
+  }
+}

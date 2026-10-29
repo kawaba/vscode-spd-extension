@@ -1,0 +1,10 @@
+.vscode/**
+src/**
+docs/**
+node_modules/**
+out/**/*.map
+tsconfig.json
+sync-web.ps1
+CLAUDE.md
+.gitignore
+**/*.vsix

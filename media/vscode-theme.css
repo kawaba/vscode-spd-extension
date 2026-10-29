@@ -1,0 +1,22 @@
+/* SPD エディタ（editor.html）の配色を VS Code のテーマ（ライト・ダーク・ハイコントラスト）に合わせる。
+   editor.html の <style> の後に読み込み、:root の色の変数と、白（#fff）を直書きしている部分を上書きする。 */
+:root{
+  --bg: var(--vscode-editor-background);
+  --panel: color-mix(in srgb, var(--vscode-editor-foreground) 6%, var(--vscode-editor-background));
+  --line: color-mix(in srgb, var(--vscode-editor-foreground) 14%, var(--vscode-editor-background));
+  --line-strong: color-mix(in srgb, var(--vscode-editor-foreground) 32%, var(--vscode-editor-background));
+  --text: var(--vscode-editor-foreground);
+  --text-dim: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-focusBorder);
+  --accent-bg: var(--vscode-list-hoverBackground);
+  --autobar: var(--vscode-textLink-foreground);
+}
+/* ラジオボタン・スクロールバーなどの部品も明暗に合わせる（VS Code は body にテーマの種類のクラスを付ける） */
+body.vscode-light, body.vscode-high-contrast-light{ color-scheme: light; }
+body.vscode-dark, body.vscode-high-contrast{ color-scheme: dark; }
+select.skeleton, button.tool, button.act, #cap, .scroll, .data{
+  background: var(--vscode-editor-background);
+}
+button.act, select.skeleton{ color: var(--text); }
+.lang-label input{ accent-color: var(--accent); }
+.selected{ background: var(--vscode-editor-selectionBackground) !important; }

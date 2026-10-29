@@ -1,0 +1,4 @@
+# 改行は LF に固定する（media/ の複製を sync-web.ps1 が元の SPD エディタとバイト単位で比べるため）
+* text=auto eol=lf
+*.ttf binary
+*.png binary

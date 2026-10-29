@@ -1,0 +1,2133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPD Editor</title>
+<style>
+  /* 罫線を全角幅で表示するフォント（v1.19.1）。PC にインストール済みならそれを使い、
+     無ければ同じフォルダの fonts/ から読む（Eclipse プラグインは fonts/ を同梱。単体版は無ければ次の候補へ） */
+  @font-face{
+    font-family: "PlemolJP HS";
+    src: local("PlemolJP HS Regular"), local("PlemolJPHS-Regular"),
+         url("fonts/PlemolJPHS-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  :root{
+    --bg: #fcfcfa; --panel: #f0efea; --line: #d9d7cf; --line-strong: #b8b5aa;
+    --text: #2a2a28; --text-dim: #8a877c; --accent: #2f6fb0; --accent-bg: #e3eefa;
+    --autobar: #2f6fb0;
+    --mono: "PlemolJP HS","UD デジタル 教科書体 N","BIZ UDGothic","MS Gothic","Noto Sans Mono CJK JP",monospace;
+  }
+  *{ box-sizing: border-box; }
+  body{ margin:0; padding:16px 16px 20px; background:var(--bg); color:var(--text); font-family:var(--mono); height:100vh; display:flex; flex-direction:column; }
+  .titlebar{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:0 0 12px; }
+  h1{ font-size:15px; font-weight:600; margin:0; letter-spacing:.02em; text-align:right; }
+  h1 .ver{ font-size:12px; font-weight:400; color:var(--text-dim); margin-left:8px; letter-spacing:0; }
+  .langbar{ display:flex; align-items:center; gap:10px; }
+  /* 📖💡 外部リンク（タイトル行・「SPD Editor」表示の左側）。
+     2つの絵文字はクリックしやすいよう 28px の当たり判定を持たせ、間隔を 14px あける。 */
+  .titleright{ display:flex; align-items:center; gap:14px; }
+  .helplink{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; font-size:18px; line-height:1;
+    text-decoration:none; border-radius:6px;
+    font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",var(--mono);
+  }
+  .helplink:hover{ background:var(--accent-bg); }
+  /* スケルトン選択（タイトル行・📖 の左・v1.18.0）。言語ごとの xxx-patterns.js が無ければ非表示（v1.22.0） */
+  select.skeleton{
+    font-family:var(--mono); font-size:12px; height:28px; padding:0 6px;
+    background:#fff; color:var(--text);
+    border:1px solid var(--line-strong); border-radius:6px; cursor:pointer;
+  }
+  select.skeleton:hover{ background:var(--accent-bg); }
+  /* 言語選択ラジオ と ファイル名表示 を 20px あけて横並びにする */
+  .titleleft{ display:flex; align-items:center; gap:20px; }
+  .filename{ font-size:12px; color:var(--text-dim); white-space:nowrap; }
+  .toolbar{
+    display:flex; align-items:flex-start; gap:8px;
+    padding:8px 10px; background:var(--panel);
+    border:1px solid var(--line); border-radius:8px; margin-bottom:8px;
+  }
+  .tools{ display:flex; flex-direction:column; gap:4px; }
+  .toolrow{ display:flex; gap:4px; flex-wrap:wrap; }
+  .toolrow-sep{ border-top:1px solid var(--line); margin-top:2px; padding-top:4px; }
+  .toolrow-vsep{ width:1px; background:var(--line-strong); align-self:stretch; margin:0 2px; }
+  /* 流し込み表示（v1.20.0）：2段のどちらかが1行に収まらない幅では、段の枠をなくして
+     1段目の後ろに2段目のボタンを続けて流し込む（判定は updateToolFlow）。
+     段の区切りは横線の代わりに縦線（.toolrow-joint）で示す */
+  .tools.flow{ flex-direction:row; flex-wrap:wrap; }
+  .tools.flow .toolrow{ display:contents; }
+  .toolrow-joint{ display:none; }
+  .tools.flow .toolrow-joint{ display:block; }
+  button.tool{
+    height:28px; padding:0 6px; min-width:26px;
+    font-family:var(--mono); font-size:14px; line-height:1; white-space:nowrap;
+    display:flex; align-items:center; justify-content:center;
+    background:#fff; color:var(--text);
+    border:1px solid var(--line-strong); border-radius:6px; cursor:pointer;
+  }
+  button.tool:hover{ background:var(--accent-bg); }
+  button.tool.active{ border:2px solid var(--accent); background:var(--accent-bg); }
+  /* 履歴ボタン（↩ ↪）はフックが下向きで返信アイコンに見えるため上下反転し、他より大きく表示する */
+  button.tool.histbtn{ transform:scaleY(-1); font-size:18px; }
+  .lang-label{
+    display:flex; align-items:center; gap:3px;
+    font-size:12px; cursor:pointer; white-space:nowrap; padding:0 4px;
+    color:var(--text);
+  }
+  .lang-label input{ cursor:pointer; }
+  button.act{
+    font-family:var(--mono); font-size:12px; padding:0 10px; height:28px;
+    background:#fff; border:1px solid var(--line-strong); border-radius:6px;
+    cursor:pointer; white-space:nowrap;
+  }
+  button.act:hover{ background:var(--accent-bg); }
+  .info{ font-size:12px; color:var(--text-dim); min-height:17px; padding:2px 4px 6px; }
+  .inputrow{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .inputrow span{ font-size:12px; color:var(--text-dim); white-space:nowrap; }
+  #cap{
+    flex:1; font-family:var(--mono); font-size:14px;
+    padding:6px 8px; border:1px solid var(--line-strong); border-radius:6px;
+    background:#fff; color:var(--text);
+  }
+  #cap:focus{ outline:2px solid var(--accent); outline-offset:-1px; }
+  .scroll{ flex:1; min-height:0; overflow:auto; border:1px solid var(--line-strong); border-radius:8px; background:#fff; }
+  #grid{ display:grid; }
+  .cell{
+    font-family:var(--mono); line-height:0; text-align:center; overflow:hidden; white-space:pre;
+    border-right:0.5px solid var(--line); border-bottom:0.5px solid var(--line);
+  }
+  .data{ color:var(--text); cursor:pointer; background:#fff; }
+  .hdr{ color:var(--text-dim); background:var(--panel); border-right:0.5px solid var(--line); border-bottom:0.5px solid var(--line); }
+  .corner{ position:sticky; top:0; left:0; z-index:4; background:var(--panel); border-right:1px solid var(--line-strong); border-bottom:1px solid var(--line-strong); }
+  .colhdr{ position:sticky; top:0; z-index:3; border-bottom:1px solid var(--line-strong); }
+  .rowhdr{ position:sticky; left:0; z-index:2; border-right:1px solid var(--line-strong); }
+  .caret{ box-shadow: inset 0 0 0 2px var(--accent); }
+  .selected{ background: rgba(47, 111, 176, 0.13) !important; }
+</style>
+</head>
+<body>
+<div class="titlebar">
+  <div class="titleleft">
+    <div class="langbar" id="langbar"></div>
+    <span class="filename" id="filename"></span>
+  </div>
+  <div class="titleright">
+    <select class="skeleton" id="skeleton" title="スケルトン（決まった枝のひな形）をカーソル位置へ貼り付け" hidden></select>
+    <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
+    <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
+    <h1>SPD Editor<span class="ver">ver. 1.22.0</span></h1>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="tools" id="toolbox"></div>
+</div>
+
+<div class="info" id="info"></div>
+
+<div class="inputrow">
+  <span>文字入力欄</span>
+  <input id="cap" type="text" placeholder="ここで文字列を編集し、Enterでカーソル位置へ挿入・Shift+Enterで上書き（日本語可）" autocomplete="off" spellcheck="false">
+</div>
+
+<div class="scroll" id="scroll">
+  <div id="grid"></div>
+</div>
+
+<!-- 起動時設定（任意）。同フォルダに spd-config.js があれば読み込む。
+     例： var SPD_CONFIG = { lang: "java" };   （lang は "java"(JavaSE) / "spring" / "thymeleaf" / "python" / "c"）
+         var SPD_CONFIG = { lang: "java", langs: ["java", "spring", "thymeleaf"] };
+           （langs：ラジオに出す言語。省略時は全言語・v1.22.0）
+     ファイルが無ければ読み込み失敗（無視）し、従来どおり既定で起動する。
+     <script src> はローカル直開き(file://)・サーバ運用のどちらでも動作する。
+     スケルトン定義（xxx-patterns.js）は言語を切り替えたときに読み込む（PATTERN_FILES・v1.22.0）。 -->
+<script src="spd-config.js"></script>
+
+<script>
+/* ===== 実行環境 =====
+   Eclipse プラグイン（kawaba/eclipse-spd-plugin の SpdBrowser.java）から開かれたか。Java 側は URL に ?host=eclipse を付ける。
+   念のため Java の BrowserFunction が登録済みかどうかでも判定する。 */
+const IN_ECLIPSE = /[?&]host=eclipse(&|$)/.test(location.search)
+                || typeof window.spdGetInitialText === "function";
+/* Eclipse 内での画面の種類。"editor"＝.spd ファイルのエディタ（保存＝上書き）、
+   "view"＝ファイルなしで使うビュー（保存＝名前を付けて .spd に保存） */
+const ECLIPSE_MODE = (location.search.match(/[?&]mode=(\w+)/) || [])[1] || "editor";
+
+/* ===== 設定 ===== */
+const COLS = 90, ROWS = 500, CELLW = 18, CELLH = 22, FONT = 16, RNUMW = 34;
+
+/* ===== データ ===== */
+const data = {};
+const key = (x, y) => x + "," + y;
+const isHalf = ch => !!ch && ch.charCodeAt(0) <= 0x7f;
+const isQuote = ch => ch === '"' || ch === "'";
+
+/* ===== タブ展開 =====
+   タブ(U+0009)は isHalf() が真になるため、そのままだと「普通の半角文字」として
+   隣の文字と 1 マスにペアリングされてしまう（cell は white-space:pre / overflow:hidden
+   なのでタブが幅を食い、相方の文字が欄外へ押し出されて見えなくなる）。
+   Eclipse など外部エディタから貼り付けたタブインデントを正しく扱うため、
+   取り込み口（Import・文字入力欄）でタブ幅 TABSIZE の半角空白へ展開しておく。
+   タブ位置は文字列（＝行）の先頭から数える（Eclipse と同じ数え方）。 */
+const TABSIZE = 4;
+function expandTabs(s){
+  if (s.indexOf("\t") < 0) return s;
+  let out = "", col = 0;
+  for (const ch of s){
+    if (ch === "\t"){
+      const n = TABSIZE - (col % TABSIZE);
+      out += " ".repeat(n); col += n;
+    } else if (ch === "\n"){
+      out += ch; col = 0;
+    } else {
+      out += ch; col++;
+    }
+  }
+  return out;
+}
+
+/* ↻（for/while ループ記号）・▽（stream 処理記号）も下方向アンカー
+   ＝記号の直下から │ を伸ばしてブロックを作る */
+const LINE_DOWN = new Set(["┌","┐","├","┤","┬","┼","│","◇","〇","↻","▽"]);
+const LINE_UP   = new Set(["└","┘","├","┤","┴","┼","│","◇","〇"]);
+/* 上方向へ親ノードへ接続する罫線だけの集合。
+   ◇（分岐/switch/match）・〇（try/catch）は「ブロックの開始記号」で下方向へ
+   伸ばすだけなので上へは接続しない。上にあるテキストは親ではなく兄弟ノードの
+   内容なので、そこへ │ を誤補完しないよう LINE_UP から ◇・〇 を除外する。 */
+const LINE_UP_CONNECT = new Set(["└","┘","├","┤","┴","┼","│"]);
+const autoSet = {};
+/* テキストランの境界となる罫線・制御記号セット */
+const SPD_BORDER = new Set(["│","├","└","┌","┐","┘","┤","┼","─","◇","〇","↻","←","→","⇒","┬","┴","▽"]);
+
+/* ===== ツール定義 ===== */
+/* 罫線（─）の直後には空白を置かない方針のため、シンボルも ─ とラベルを詰めて定義する
+   （ボタン表示・スタンプ出力ともにこの文字列を使う） */
+const JAVA_SYMBOLS = [
+  "◇─","└─else","↻─for:","↻─while:",
+  "break","continue","◇─switch:","├─case","└─default","〇─try:","〇─catch:",
+  /* Java 専用：λ():＝ラムダ式、▽─stream:＝ストリーム処理（v1.11.0） */
+  "λ():","▽─stream:"
+];
+const PYTHON_SYMBOLS = [
+  "◇─","└─else","↻─for:","↻─while:",
+  "break","continue","◇─match:","├─case","└─default","〇─try:","〇─except:"
+];
+/* C 用シンボル。Java 用から 〇─try: / 〇─catch:（例外処理）を除いたもの */
+const C_SYMBOLS = [
+  "◇─","└─else","↻─for:","↻─while:",
+  "break","continue","◇─switch:","├─case","└─default"
+];
+/* Thymeleaf 用シンボル（v1.21.0）。画面の部品を ［］ で示すラベル。罫線は付けない */
+const THYMELEAF_SYMBOLS = [
+  "［見出し］","［小見出し］","［文字］","［段落］","［フォーム］","［リンク］",
+  "［表（行）］","［表（列）］","［画像］"
+];
+const THYMELEAF_TITLES = {
+  "［見出し］":   "見出し（h1・h2 など、ページの表題）",
+  "［小見出し］": "小見出し（h3〜h6 など、区画の表題）",
+  "［文字］":     "文字（span など、文中の短い文字列や値の表示）",
+  "［段落］":     "段落（p。ひとまとまりの文章）",
+  "［フォーム］": "フォーム（form。入力内容を送信する。送信先は → で示す）",
+  "［リンク］":   "リンク（a。別のページへ移動する。移動先は → で示す）",
+  "［表（行）］": "表（行）（1行に1項目を並べる表。ラベルと値の組を縦に並べる）",
+  "［表（列）］": "表（列）（1列に1項目を並べる一覧表。データの件数だけ行を繰り返す）",
+  "［画像］":     "画像（img）"
+};
+/* 括弧記号（Thymeleaf・v1.21.0）。配置後のカーソルは括弧の中央に置く（追記しやすいように） */
+const BRACKET_SYMBOLS = ["＜＞","{}","<<>>"];
+const BRACKET_TITLES = {
+  "＜＞":  "＜＞（部品の種類。例：送信＜submit＞）",
+  "{}":   "{}（変数・式。例：{変数}）",
+  "<<>>": "<<>>（画像サイズ・CSS の指定）"
+};
+/* 罫線記号グループ（2段目の左側に配置）。Java / C は ┬・┴ を右端に追加 */
+const LINE_SYMBOLS = ["│","─","└─","├─","┬─"];
+const LINE_SYMBOLS_JAVA = ["│","─","└─","├─","┬─","┬","┴"];
+/* 矢印記号グループ（2段目、罫線グループの右に配置）。
+   Java は 送る →・入力 ⇒ と 継承 ─⊳・実装 ---⊳ を含む。C は 代入 ← のみ（継承・実装は除外） */
+const ARROW_SYMBOLS_JAVA   = ["←","→","⇒","─⊳","---⊳"];
+const ARROW_SYMBOLS_PYTHON = ["←","->"];
+const ARROW_SYMBOLS_C      = ["←"];
+/* Thymeleaf は罫線グループと区切らずに → と括弧記号を続ける（v1.21.0） */
+const ARROW_SYMBOLS_THYMELEAF = ["→", ...BRACKET_SYMBOLS];
+/* 言語モード（ラジオの並び順）。java は JavaSE（保存済みのファイルと合わせるため値は "java" のまま・v1.22.0） */
+const LANGS = ["java", "spring", "thymeleaf", "python", "c"];
+const LANG_NAMES = { java: "JavaSE", spring: "Spring", thymeleaf: "Thymeleaf", python: "Python", c: "C" };
+/* Spring は JavaSE と同じツールバー・Export・Import（v1.22.0） */
+const isJavaLang = lang => lang === "java" || lang === "spring";
+let currentLang = "python";
+
+/* ラジオに出す言語（SPD_CONFIG.langs・v1.22.0）。指定が無ければ全言語。
+   指定に無い言語のファイルを開いたときは、その言語も出す（知らないうちに言語が変わらないように） */
+function configLangs(){
+  const cfg = (typeof SPD_CONFIG !== "undefined" && SPD_CONFIG && Array.isArray(SPD_CONFIG.langs))
+            ? SPD_CONFIG.langs : [];
+  const list = LANGS.filter(l => cfg.includes(l));
+  return list.length ? list : LANGS.slice();
+}
+function visibleLangs(){
+  const list = configLangs();
+  return LANGS.filter(l => list.includes(l) || l === currentLang);
+}
+
+/* current は「直前に使ったツール／現在のモード」を保持する。
+   ツールボタン押下時にアクティブ表示するために使う。
+   __text と __select はモード（状態が続く）。他は最終使用ツールの記憶のみ。 */
+let current = "│";
+
+/* カーソル：グリッドをクリックすると常にセットされる */
+let caret = null;   // {x, y, slot}
+let anchorX = 0;
+let textRunInfo = null; // {startX, endX, y} | null  テキストラン編集中の状態
+
+/* 矩形選択の状態 */
+let selectP1 = null;
+let selectP2 = null;
+
+/* セルクリップボード：コピーした矩形領域 { width, height, cells:[{dx,dy,v}] } */
+let cellClipboard = null;
+
+/* ===== 操作履歴（アンドゥ・リドゥ） ===== */
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 50;
+
+/* ===== グリッド構築 ===== */
+const grid = document.getElementById("grid");
+const refs = [];
+grid.style.gridTemplateColumns = RNUMW + "px repeat(" + COLS + ", " + CELLW + "px)";
+
+function makeCell(w, h, cls){
+  const d = document.createElement("div");
+  d.className = "cell " + cls;
+  d.style.width = w + "px";
+  d.style.height = h + "px";
+  d.style.lineHeight = h + "px";
+  return d;
+}
+
+grid.appendChild(makeCell(RNUMW, CELLH, "hdr corner"));
+for (let x = 0; x < COLS; x++){
+  const c = makeCell(CELLW, CELLH, "hdr colhdr");
+  c.style.fontSize = "9px";
+  if (x % 5 === 0) c.textContent = x;
+  grid.appendChild(c);
+}
+for (let y = 0; y < ROWS; y++){
+  refs[y] = [];
+  const rh = makeCell(RNUMW, CELLH, "hdr rowhdr");
+  rh.style.fontSize = "9px"; rh.style.lineHeight = CELLH + "px";
+  rh.style.textAlign = "right"; rh.style.paddingRight = "4px";
+  if (y % 5 === 0) rh.textContent = y;
+  grid.appendChild(rh);
+  for (let x = 0; x < COLS; x++){
+    const c = makeCell(CELLW, CELLH, "data");
+    c.style.fontSize = FONT + "px"; c.style.lineHeight = CELLH + "px";
+    c.dataset.x = x; c.dataset.y = y;
+    refs[y][x] = c;
+    grid.appendChild(c);
+  }
+}
+
+/* ===== 外部リンク（📖 解説・書き方 ／ 💡 記述パターン） =====
+   📖 は言語によらず 1ページ固定。💡 は選択中の言語ごとに別ページへ飛ぶ。
+   確定しているのは java の 💡 のみ。他は仮URL（ダミー）なので、
+   確定し次第この下の定数を書き換えるだけでよい。 */
+const GUIDE_URL = "https://k-webs.jp/spd/spd-guide.pdf";        // 仮URL（未確定）
+const PATTERN_URL = {
+  java:   "https://k-webs.jp/spd/spd-java.html",                 // 確定
+  spring: "https://k-webs.jp/spd/spd-java.html",                 // JavaSE と同じページ
+  python: "https://k-webs.jp/spd/spd-python.html",               // 仮URL（未確定）
+  c:      "https://k-webs.jp/spd/spd-c.html"                     // 仮URL（未確定）
+};
+const lnkGuide   = document.getElementById("lnkGuide");
+const lnkPattern = document.getElementById("lnkPattern");
+
+/* 💡 のリンク先を現在の言語に合わせる（言語切替のたびに renderToolbox から呼ばれる） */
+function updateHelpLinks(){
+  lnkGuide.href = GUIDE_URL;
+  lnkPattern.href = PATTERN_URL[currentLang] || PATTERN_URL.java;
+  const langName = LANG_NAMES[currentLang] || "Java";
+  lnkPattern.title = "SPDの記述パターン（" + langName + "）";
+}
+
+/* ===== ツールボックス ===== */
+const toolbox = document.getElementById("toolbox");
+const langbar = document.getElementById("langbar");   // 言語切替ラジオ（タイトル行・左詰め）
+
+/* 流し込み表示の切り替え（v1.20.0）。各段を折り返さずに並べた幅（ボタン幅＋間隔の合計）と
+   ツールバーの内側の幅を比べ、どちらかの段が収まらなければ .flow を付ける。
+   ボタン幅は表示方式で変わらないので、.flow の付け外しで判定が揺れることはない */
+function updateToolFlow(){
+  const avail = toolbox.parentElement.clientWidth
+              - parseFloat(getComputedStyle(toolbox.parentElement).paddingLeft)
+              - parseFloat(getComputedStyle(toolbox.parentElement).paddingRight);
+  const gap = 4;   // .toolrow の gap
+  const tooWide = [...toolbox.children].some(row => {
+    let w = 0, n = 0;
+    for (const el of row.children){
+      if (el.classList.contains("toolrow-joint")) continue;
+      const cs = getComputedStyle(el);
+      w += el.getBoundingClientRect().width + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight);
+      n++;
+    }
+    return w + gap * Math.max(0, n - 1) > avail + 0.5;
+  });
+  toolbox.classList.toggle("flow", tooWide);
+}
+new ResizeObserver(() => updateToolFlow()).observe(document.querySelector(".toolbar"));
+
+function renderToolbox(){
+  const symbols = currentLang === "python"    ? PYTHON_SYMBOLS
+               : currentLang === "c"         ? C_SYMBOLS
+               : currentLang === "thymeleaf" ? THYMELEAF_SYMBOLS
+               : JAVA_SYMBOLS;
+  toolbox.innerHTML = "";
+  function makeBtn(id){
+    if (id === "|"){
+      const sep = document.createElement("span");
+      sep.className = "toolrow-vsep";
+      return sep;
+    }
+    const b = document.createElement("button");
+    b.className = "tool" + (current === id ? " active" : "");
+    if      (id === "__erase")   { b.textContent = "削除"; b.title = "消しゴム（カーソル位置のマスを削除して右側を左へ詰める）"; }
+    else if (id === "__inscell") { b.textContent = "挿入"; b.title = "マス挿入（カーソル位置に空マスを挿入して右シフト）"; }
+    else if (id === "__cellcopy"){ b.textContent = "コピー";  b.title = "選択範囲のマスをコピー（Export と違い、マスの矩形をそのまま複製する）"; }
+    else if (id === "__cellpaste"){b.textContent = "貼付け"; b.title = "コピーしたマスをカーソル位置に貼り付け"; }
+    else if (id === "__insrow")  { b.textContent = "行+"; b.title = "行挿入（現在行の上に空行を追加）"; }
+    else if (id === "__delrow")  { b.textContent = "行-"; b.title = "行削除（現在行を削除して下をシフト）"; }
+    else if (id === "__undo")  { b.textContent = "↩"; b.title = "元に戻す (Ctrl+Z)"; b.classList.add("histbtn"); }
+    else if (id === "__redo")  { b.textContent = "↪"; b.title = "やり直す (Ctrl+Y)"; b.classList.add("histbtn"); }
+    else if (id === "__copy")  { b.textContent = "Export"; b.title = "SPDをクリップボードへエクスポート（コメント付き・行頭や前後の余白は詰める）。範囲選択中はその部分だけをExport。Shift+クリックでコメント記号なし・余白もそのままExport。JavaSE・Spring では Alt+クリックで全行の行頭に「#」を付けてExport（application.properties 用）"; }
+    else if (id === "__paste") { b.textContent = "Import"; b.title = "クリップボードからSPDをインポート（/* */・\"\"\"・<!--/* */--> の囲み記号と、JavaSE・Spring では行頭の # を取り除く）。Shift+クリックでカーソル位置に部分Import（既存は消さず矩形を上書き）"; }
+    else if (id === "__clear") { b.textContent = "全消去"; b.title = "全消去（グリッド全体を空にする）"; }
+    else if (id === "←")    { b.textContent = id; b.title = "代入"; }
+    else if (id === "→")    { b.textContent = id; b.title = currentLang === "thymeleaf" ? "送信先・移動先" : "送る"; }
+    else if (id === "⇒")    { b.textContent = id; b.title = "入力"; }
+    else if (id === "->")   { b.textContent = id; b.title = "型ヒント"; }
+    else if (id === "─⊳")   { b.textContent = id; b.title = "継承"; }
+    else if (id === "---⊳") { b.textContent = id; b.title = "実装"; }
+    else if (id === "λ():")        { b.textContent = id; b.title = "ラムダ式（Java 専用）"; }
+    else if (id === "▽─stream:") { b.textContent = id; b.title = "ストリーム処理（Java 専用）"; }
+    else {
+      b.textContent = id;
+      const t = THYMELEAF_TITLES[id] || BRACKET_TITLES[id];
+      if (t) b.title = t;
+    }
+    /* 記号・罫線ボタン（操作系 __xxx 以外）は Shift+クリックで文字入力欄へ挿入できる */
+    if (!id.startsWith("__")){
+      b.title = (b.title ? b.title + "  ／  " : "") + "Shift+クリックで文字入力欄のカーソル位置へ挿入";
+      /* mousedown の既定動作（ボタンへのフォーカス移動）を抑止し、
+         文字入力欄のフォーカスとカーソル位置を保ったまま挿入できるようにする */
+      b.onmousedown = (e) => { if (e.shiftKey) e.preventDefault(); };
+    }
+    b.onclick = (e) => applyTool(id, e);
+    return b;
+  }
+  const lineSymbols = (currentLang === "python" || currentLang === "thymeleaf") ? LINE_SYMBOLS : LINE_SYMBOLS_JAVA;
+  const arrowSymbols = currentLang === "python"    ? ARROW_SYMBOLS_PYTHON
+                     : currentLang === "c"         ? ARROW_SYMBOLS_C
+                     : currentLang === "thymeleaf" ? ARROW_SYMBOLS_THYMELEAF
+                     : ARROW_SYMBOLS_JAVA;
+  // Thymeleaf は罫線と矢印・括弧記号の間に縦線を入れない（v1.21.0）
+  const lineArrow = currentLang === "thymeleaf" ? [...lineSymbols, ...arrowSymbols]
+                                                : [...lineSymbols, "|", ...arrowSymbols];
+  // 2段構成：段1=履歴(↩↪)＋言語別シンボル／段2=罫線・矢印・操作・クリア・入出力・保存/開く
+  [
+    ["__undo", "__redo", "|", ...symbols],
+    [...lineArrow, "|", "__insrow", "__delrow", "__cellcopy", "__cellpaste", "__erase", "__inscell", "|", "__clear", "|", "__copy", "__paste"]
+  ].forEach((items, i) => {
+    const row = document.createElement("div");
+    row.className = "toolrow" + (i === 1 ? " toolrow-sep" : "");
+    if (i === 1){
+      // 流し込み表示のときだけ見える、1段目と2段目の境目の縦線
+      const joint = makeBtn("|");
+      joint.classList.add("toolrow-joint");
+      row.appendChild(joint);
+    }
+    items.forEach(id => row.appendChild(makeBtn(id)));
+    if (i === 1){
+      // クリア・Export・Import の右に [保存][開く] を横並びで配置
+      const saveB = document.createElement("button");
+      saveB.className = "act"; saveB.textContent = "保存"; saveB.title = "data と言語を JSON で保存";
+      saveB.onclick = doSave;
+      const loadB = document.createElement("button");
+      loadB.className = "act"; loadB.textContent = "開く"; loadB.title = "JSON ファイルを読み込み";
+      loadB.onclick = doLoad;
+      row.appendChild(saveB);
+      // Eclipse 内では「保存」は Eclipse の保存（Ctrl+S と同じ）。ファイルは Eclipse 側で開くので「開く」は出さない
+      if (IN_ECLIPSE && ECLIPSE_MODE === "view"){
+        saveB.textContent = "保存…";
+        saveB.title = "名前を付けて .spd ファイルに保存 (Ctrl+S)。保存しなくても内容は Eclipse に保管されます";
+      } else if (IN_ECLIPSE){
+        saveB.title = "Eclipse でファイルへ保存 (Ctrl+S)";
+      } else {
+        row.appendChild(loadB);
+      }
+    }
+    toolbox.appendChild(row);
+  });
+  updateToolFlow();
+
+  // 言語切替ラジオ（JavaSE / Spring / Thymeleaf / Python / C）はタイトル行（langbar・左詰め）に配置
+  langbar.innerHTML = "";
+  visibleLangs().forEach(lang => {
+    const label = document.createElement("label");
+    label.className = "lang-label";
+    const radio = document.createElement("input");
+    radio.type = "radio"; radio.name = "lang"; radio.value = lang;
+    radio.checked = (currentLang === lang);
+    radio.onchange = () => { currentLang = lang; current = "│"; renderToolbox(); updateInfo(); };
+    label.appendChild(radio);
+    const labelText = LANG_NAMES[lang];
+    label.appendChild(document.createTextNode(labelText));
+    langbar.appendChild(label);
+  });
+
+  updateHelpLinks();   // 💡 のリンク先を現在の言語に追従させる
+  updateSkeletons();   // スケルトンを現在の言語のものにする（SK-07）
+}
+
+/* ===== ツール適用（ボタン押下時に呼ばれる。e はクリックイベント） ===== */
+function applyTool(id, e){
+  /* Shift+クリック：記号・罫線を文字入力欄のカーソル位置へ挿入する（グリッドは変更しない）。
+     操作系ボタン（__xxx）は Shift に別の意味があるため対象外。
+     ツールモード・カーソル位置・テキストラン編集状態はいずれも変更しない。 */
+  if (e && e.shiftKey && !id.startsWith("__")){
+    insertIntoCap(id);
+    return;
+  }
+
+  /* セルコピー・Export は選択範囲を使うので、選択解除より前に処理する */
+  if (id === "__cellcopy"){ copyCells(); return; }
+  if (id === "__copy"){                                        // 範囲選択時は部分Export／Shift+Export = コメント記号なし
+    const alt = !!(e && e.altKey);
+    // Alt+Export = # コメント（JavaSE・Spring のみ）。それ以外の Alt と Shift+Alt は無効（何もしない）
+    if (alt && (!isJavaLang(currentLang) || e.shiftKey)) return;
+    doCopy(!!(e && e.shiftKey), alt);
+    return;
+  }
+
+  /* ツールを押したら、ドラッグ中の矩形選択を解除する */
+  if (current === "__select") cancelSelection();
+
+  /* 即時実行アクション（モードにならない） */
+  if (id === "__cellpaste"){ textRunInfo = null; pasteCells(); return; }
+  if (id === "__insrow"){ textRunInfo = null; if (caret) insertRow(caret.y); return; }
+  if (id === "__delrow"){ textRunInfo = null; if (caret) deleteRow(caret.y); return; }
+  if (id === "__undo")  { textRunInfo = null; undo();    return; }
+  if (id === "__redo")  { textRunInfo = null; redo();    return; }
+  if (id === "__paste") { textRunInfo = null; doPaste(e && e.shiftKey); return; } // Shift+Import = 部分Import
+  if (id === "__clear") { clearAll(); return; }
+
+  current = id;
+  textRunInfo = null;
+  renderToolbox();
+
+  /* カーソル未設定なら何もしない（次のグリッドクリックを待つ） */
+  if (!caret){
+    updateInfo();
+    return;
+  }
+
+  const {x, y} = caret;
+
+  if (id === "__erase"){
+    eraseAndShift(x, y);
+  } else if (id === "__inscell"){
+    insertCell(x, y);
+  } else if (id.length === 1){
+    /* 単文字記号：カーソル位置に直接配置 */
+    saveHistory();
+    data[key(x, y)] = id;
+    refreshColumn(x);
+    /* │ は連続描画しやすいよう1つ下へ。─ は1つ右へ進めて文字入力モードへ
+       （ラベルを続けて打てる。ESCで入力破棄＝既存のテキストモードESC処理） */
+    if (id === "│"){
+      setCaret(x, Math.min(ROWS - 1, y + 1), 0);
+    } else if (id === "─"){
+      setCaret(Math.min(COLS - 1, x + 1), y, 0);
+      current = "__text";
+      textRunInfo = null;
+      renderToolbox();
+      const capEl = document.getElementById("cap");
+      capEl.value = "";
+      capEl.focus();
+    }
+  } else {
+    /* 複数文字スタンプ：カーソル位置から展開してテキストモードへ */
+    saveHistory();
+    caret.slot = 0;
+    flush(id);
+    /* 括弧記号は中身を追記しやすいよう、カーソルを括弧の中央へ置く（v1.21.0）。
+       前半の文字幅を半角単位で数え、マスとスロットに直す（全角＝2、半角＝1） */
+    if (BRACKET_SYMBOLS.includes(id)){
+      const units = [...id].slice(0, id.length / 2).reduce((n, ch) => n + (isHalf(ch) ? 1 : 2), 0);
+      const cx = x + Math.floor(units / 2);
+      if (cx < COLS) setCaret(cx, y, units % 2);
+    }
+    current = "__text";
+    renderToolbox();
+    document.getElementById("cap").focus();
+  }
+
+  updateInfo();
+}
+
+/* 記号・罫線を文字入力欄（#cap）のカーソル位置へ挿入する。
+   選択範囲があれば置き換え、挿入後はカーソルを挿入文字列の直後（括弧記号は中央）へ置く。
+   グリッド・ツールモード・履歴には一切触れない（入力欄の文字列を編集するだけ）。 */
+function insertIntoCap(str){
+  const el = document.getElementById("cap");
+  const s = (el.selectionStart == null) ? el.value.length : el.selectionStart;
+  const t = (el.selectionEnd   == null) ? el.value.length : el.selectionEnd;
+  el.value = el.value.slice(0, s) + str + el.value.slice(t);
+  // 括弧記号はカーソルを括弧の中央へ（v1.21.0）
+  const pos = s + (BRACKET_SYMBOLS.includes(str) ? str.length / 2 : str.length);
+  el.focus();
+  el.setSelectionRange(pos, pos);
+}
+
+/* ===== カーソル ===== */
+let prevCaretCell = null;
+function clearCaret(){
+  if (prevCaretCell){ prevCaretCell.classList.remove("caret"); prevCaretCell = null; }
+  caret = null;
+}
+function setCaret(x, y, slot){
+  if (prevCaretCell) prevCaretCell.classList.remove("caret");
+  caret = { x, y, slot: slot || 0 };
+  anchorX = x;
+  const c = refs[y]?.[x];
+  if (c){ c.classList.add("caret"); prevCaretCell = c; }
+  updateInfo();
+}
+function moveCaret(){
+  if (prevCaretCell) prevCaretCell.classList.remove("caret");
+  const c = refs[caret.y]?.[caret.x];
+  if (c){ c.classList.add("caret"); prevCaretCell = c; }
+  updateInfo();
+}
+
+/* ===== 情報表示 ===== */
+const infoEl = document.getElementById("info");
+function updateInfo(){
+  if (current === "__select"){
+    if (selectP2)
+      infoEl.textContent = "範囲選択 ("
+        + Math.min(selectP1.x,selectP2.x) + "," + Math.min(selectP1.y,selectP2.y) + ")–("
+        + Math.max(selectP1.x,selectP2.x) + "," + Math.max(selectP1.y,selectP2.y) + ")"
+        + "  ／  クリックで移動  ／  Delete・Backspace で削除  ／  ESC でキャンセル";
+    else if (selectP1)
+      infoEl.textContent = "範囲選択 — 1点目 (" + selectP1.x + "," + selectP1.y
+        + ") 確定  ／  2点目をクリック  ／  ESC でキャンセル";
+    else
+      infoEl.textContent = "範囲選択 — 矩形の1点目をクリックして終点までドラッグ";
+    return;
+  }
+  if (current === "__text"){
+    if (caret)
+      infoEl.textContent = "文字モード  (x=" + caret.x + ", y=" + caret.y + ")  "
+        + (caret.slot === 0 ? "左スロット（半角1文字目）" : "右スロット（半角2文字目）")
+        + "  ／  入力欄で入力してEnter（挿入）・Shift+Enter（上書き）";
+    else
+      infoEl.textContent = "文字モード — グリッドのマスをクリックして入力位置を選択";
+    return;
+  }
+  if (!caret){
+    infoEl.textContent = "グリッドのマスをクリックして位置を選択（ドラッグで範囲選択）し、ボタンで操作してください";
+    return;
+  }
+  const label = current === "__erase" ? "削除（削除＋右詰め）"
+              : current.length === 1  ? "「" + current + "」"
+              : "「" + current.trimEnd() + "」";
+  infoEl.textContent = "位置 (x=" + caret.x + ", y=" + caret.y + ")  ／  "
+    + label + " ボタンをクリックで操作";
+}
+
+/* ===== セル描画 ===== */
+function paintCell(x, y){
+  const c = refs[y][x];
+  if (!c) return;
+  const v = data[key(x, y)];
+  if (v){
+    c.textContent = v;
+    c.style.textAlign = (v.length === 2) ? "left" : "center";
+    c.style.color = "";
+  } else if (autoSet[key(x, y)]){
+    c.textContent = "│";
+    c.style.textAlign = "center";
+    c.style.color = "var(--autobar)";
+  } else {
+    c.textContent = "";
+    c.style.textAlign = "center";
+    c.style.color = "";
+  }
+}
+
+/* ===== │ 自動補完 ===== */
+/* 指定マスがテキスト（罫線・SPD記号でない実内容）かどうかを判定する。
+   自動補完の │ がテキストを横断して引かれるのを防ぐために使う。
+   空白だけのマス・罫線・SPD記号（SPD_BORDER）はテキストとみなさない。 */
+function isTextCell(x, y){
+  const v = data[key(x, y)];
+  if (v === undefined) return false;
+  if (/^[\s　]+$/.test(v)) return false;          // 空白だけのマスは無視
+  if (v.length === 1 && SPD_BORDER.has(v)) return false; // 罫線・SPD記号はテキストでない
+  return true;                                    // それ以外（全角/半角テキスト）はテキスト
+}
+function colFill(x){
+  const anchors = [];
+  for (let y = 0; y < ROWS; y++){
+    const v = data[key(x, y)];
+    if (!v || v.length !== 1) continue;
+    if (!LINE_DOWN.has(v) && !LINE_UP.has(v)) continue;
+    // ◇（switch/match を含む）も ↻ と同様、記号の直下から │ を伸ばす方針のため
+    // 通常アンカーとして扱う（旧 switch/match 除外は撤廃）
+    anchors.push(y);
+  }
+  const fill = [];
+  for (let i = 0; i < anchors.length - 1; i++){
+    const ya = anchors[i], yb = anchors[i+1];
+    const va = data[key(x, ya)], vb = data[key(x, yb)];
+    if (!LINE_DOWN.has(va) || !LINE_UP.has(vb)) continue;
+    // ◇ と 〇 は異なる種類なので相互に補完しない
+    if ((va === "◇" && vb === "〇") || (va === "〇" && vb === "◇")) continue;
+    // 下側アンカーが ─◇ / ─〇（左隣に ─ を持つ分岐/例外の開始記号）の場合、
+    // それは左の親スパインにぶら下がる独立したブロック（単独の if 文など）であり、
+    // 上の ◇/〇 の else-if 的な継続ではない。よって縦連結しない。
+    // （else-if は下側が ◇─＝左隣に ─ を持たず ◇ が直接スパイン位置に来るので従来どおり補完する）
+    if ((vb === "◇" || vb === "〇") && data[key(x - 1, yb)] === "─") continue;
+    // アンカー間の「補完する列」にテキストがあれば、テキストを横断する補完はしない
+    // （スパイン列が空＝テキストが右に寄っている入れ子構造の行は従来どおり補完する）
+    let crossesText = false;
+    for (let y = ya + 1; y < yb; y++){
+      if (isTextCell(x, y)){ crossesText = true; break; }
+    }
+    if (crossesText) continue;
+    for (let y = ya+1; y < yb; y++) fill.push(y);
+  }
+  // 上方向アンカー（└ ┘ ├ ┤ ┴ ┼ │）は、真上のテキスト（＝親ノード）まで
+  // 空きマスを │ でつなぐ。行挿入などで親と子の間に空きができても接続を保つため。
+  // 直上の内容がテキストの場合だけ接続し、テキストを横断はしない（空きマスのみ補完）。
+  // ◇・〇 は分岐/例外の開始記号で、上の兄弟テキストへ誤接続しないよう対象外。
+  for (let y = 0; y < ROWS; y++){
+    if (!LINE_UP_CONNECT.has(data[key(x, y)])) continue;
+    let ya = y - 1;
+    while (ya >= 0 && data[key(x, ya)] === undefined) ya--;
+    if (ya < 0) continue;            // 上に内容がない
+    if (ya === y - 1) continue;      // 隙間なし（直上に内容あり）
+    if (!isTextCell(x, ya)) continue;// 直上の内容がテキストのときだけ接続（親ノード）
+    for (let yy = ya + 1; yy < y; yy++) fill.push(yy);
+  }
+  return fill;
+}
+function refreshColumn(x){
+  for (let y = 0; y < ROWS; y++) delete autoSet[key(x, y)];
+  for (const y of colFill(x)) autoSet[key(x, y)] = true;
+  for (let y = 0; y < ROWS; y++) paintCell(x, y);
+}
+function refreshAll(){
+  for (let x = 0; x < COLS; x++) refreshColumn(x);
+}
+
+/* ===== 文字書き込み ===== */
+function advance(){
+  caret.x++; caret.slot = 0;
+  if (caret.x >= COLS){ caret.x = anchorX; caret.y++; }
+}
+/* 罫線 ─ の直後（左隣が ─・slot0）に来る空白（半角・全角）は置かない＝ラベルを ─ に詰める（TX-19） */
+function isDroppedSpace(ch){
+  return (ch === " " || ch === "　") && !!caret && caret.slot === 0 && data[key(caret.x - 1, caret.y)] === "─";
+}
+/* pad=true はパディング空白（TX-21）。TX-19 の対象外として必ず書き込む */
+function writeChar(ch, pad){
+  if (!caret || ch === "\n" || ch === "\r") return;
+  if (caret.y >= ROWS) return;
+  if (!pad && isDroppedSpace(ch)) return;
+  const k = key(caret.x, caret.y);
+  if (isHalf(ch)){
+    const cur = (data[k] && data[k].length === 2) ? data[k] : "  ";
+    if (caret.slot === 0){
+      data[k] = ch + cur[1]; paintCell(caret.x, caret.y); caret.slot = 1;
+    } else {
+      data[k] = cur[0] + ch; paintCell(caret.x, caret.y); advance();
+    }
+  } else {
+    if (caret.slot === 1 && data[k]){ advance(); if (caret.y >= ROWS) return; }
+    data[key(caret.x, caret.y)] = ch; paintCell(caret.x, caret.y); advance();
+  }
+}
+function flush(text){
+  if (!text) return;
+  writeText([...expandTabs(text)], writeChar, (x, y) => x < COLS ? data[key(x, y)] : undefined);
+  refreshAll();
+  moveCaret();
+}
+
+/* ===== 半角ランのパディング位置（TX-21・v1.17.0） =====
+   半角は2文字で1マスに詰めるため、半角が奇数個続く並び（半角ラン）には
+   半角空白1個のパディングが必ず入る。その位置を前後のマスで決める：
+     ・前後の一方だけが空き側（空マス・空白・罫線記号・行端）なら、空き側に置く。
+       全角文字に接する側には置かない（.青 → " .青"／"あいう" → ' "あいう"'。
+       クラス名や文字列の中に空白を入れない）
+     ・前後とも空き → 末尾（従来どおりの左詰め）
+     ・前後とも全角文字 → 末尾。ただし先頭が右側の語に付く記号（HEAD_PAD_CHARS）か開始引用符なら先頭
+     ・引用符1文字だけのランは従来どおり奇偶判定（TX-11：開始=先頭、終了=末尾）
+   文字入力（flush）・テキストラン編集（applyTextRunEdit）・Import（parseSPDText）が
+   同じ判定を使い、テキストランの取り出し（extractTextRun）はその逆でパディングを除く。 */
+const isOpenSide = v => !v || /^[\s　]+$/.test(v) || SPD_BORDER.has(v);
+/* 右側の語に付く記号（TX-21・v1.17.1）。前後とも全角文字に挟まれた半角ランがこれで始まるときは、
+   パディングを先頭に置いて記号を右の語に付ける（例：［.青色］ → ［ .青色］。CSS のクラス名） */
+const HEAD_PAD_CHARS = new Set([".", "{", "$", "#", "~", "%", "!", "&", "(", "[", "<", "@"]);
+/* run：奇数長の半角ラン、leftV / rightV：前後のマス（文字）、opening：run[0] が開始引用符か。
+   true なら先頭（左）にパディングを置く */
+function padAtHead(run, leftV, rightV, opening){
+  if (run.length === 1 && isQuote(run)) return opening;
+  const lo = isOpenSide(leftV), ro = isOpenSide(rightV);
+  if (lo !== ro) return lo;
+  return !lo && (HEAD_PAD_CHARS.has(run[0]) || (isQuote(run[0]) && opening));
+}
+/* 文字列をカーソル位置から書き込む（flush・applyTextRunEdit 共通）。
+   put(ch, pad) は1文字の書き込み関数、rightOf(x, y) は入力末尾の右隣マスの内容を返す。
+   半角ランの書き始め（slot0）で長さが奇数なら、padAtHead() に従い先頭へパディングを置く。 */
+function writeText(chars, put, rightOf){
+  let dq = 0, sq = 0;          // 入力内の " ' の出現回数（開始/終了の奇偶判定・TX-11）
+  let prevHalf = false;        // 直前に書いたのが半角か（＝半角ランの途中か）
+  for (let i = 0; i < chars.length; i++){
+    if (!caret) break;
+    const ch = chars[i];
+    if (ch === "\n" || ch === "\r") continue;
+    const half = isHalf(ch);
+    const dropped = isDroppedSpace(ch);
+    if (half && !prevHalf && !dropped && caret.slot === 0){
+      let j = i;
+      while (j < chars.length && isHalf(chars[j]) && chars[j] !== "\n" && chars[j] !== "\r") j++;
+      const run = chars.slice(i, j).join("");
+      if (run.length % 2 === 1){
+        const rightV = j < chars.length ? chars[j] : rightOf(caret.x + (run.length + 1) / 2, caret.y);
+        const opening = isQuote(ch) && (ch === '"' ? dq : sq) % 2 === 0;
+        if (padAtHead(run, data[key(caret.x - 1, caret.y)], rightV, opening)) put(" ", true);
+      }
+    }
+    if (ch === '"') dq++; else if (ch === "'") sq++;
+    put(ch, false);
+    if (!dropped) prevHalf = half;
+  }
+}
+
+/* ===== 矩形選択 ===== */
+function selRect(){
+  if (!selectP1 || !selectP2) return null;
+  return {
+    x1: Math.min(selectP1.x,selectP2.x), y1: Math.min(selectP1.y,selectP2.y),
+    x2: Math.max(selectP1.x,selectP2.x), y2: Math.max(selectP1.y,selectP2.y)
+  };
+}
+function redrawSelection(){
+  document.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+  const r = selRect();
+  if (r){
+    for (let y = r.y1; y <= r.y2; y++)
+      for (let x = r.x1; x <= r.x2; x++)
+        refs[y]?.[x]?.classList.add("selected");
+  } else if (selectP1){
+    refs[selectP1.y]?.[selectP1.x]?.classList.add("selected");
+  }
+}
+function moveSelection(destX, destY){
+  const r = selRect();
+  if (!r) return;
+  saveHistory();
+  const width  = r.x2 - r.x1 + 1;
+  const height = r.y2 - r.y1 + 1;
+  // ソース領域のデータを先に全収集
+  const cells = [];
+  for (let dy = 0; dy < height; dy++)
+    for (let dx = 0; dx < width; dx++)
+      cells.push({ dx, dy, v: data[key(r.x1 + dx, r.y1 + dy)] });
+  // ソース領域を消去
+  for (let dy = 0; dy < height; dy++)
+    for (let dx = 0; dx < width; dx++)
+      delete data[key(r.x1 + dx, r.y1 + dy)];
+  // 宛先に上書き
+  for (const { dx, dy, v } of cells){
+    const tx = destX + dx, ty = destY + dy;
+    if (tx >= COLS || ty >= ROWS) continue;
+    if (v !== undefined) data[key(tx, ty)] = v;
+  }
+  refreshAll();
+  cancelSelection();
+  current = "│";
+  renderToolbox();
+}
+function cancelSelection(){
+  selectP1 = null; selectP2 = null;
+  document.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+  updateInfo();
+}
+/* 選択範囲（矩形）をセルクリップボードへコピー。グリッドは変更しない。 */
+function copyCells(){
+  const r = selRect();
+  if (!r) return;
+  const width  = r.x2 - r.x1 + 1;
+  const height = r.y2 - r.y1 + 1;
+  const cells = [];
+  for (let dy = 0; dy < height; dy++)
+    for (let dx = 0; dx < width; dx++){
+      const v = data[key(r.x1 + dx, r.y1 + dy)];
+      if (v !== undefined) cells.push({ dx, dy, v });
+    }
+  cellClipboard = { width, height, cells };
+  // コピー後は選択を解除し、貼り付け先を指定できる通常モードへ戻す
+  cancelSelection();
+  current = "│";
+  renderToolbox();
+  infoEl.textContent = "選択範囲をコピーしました (" + width + "×" + height
+    + ")  ／  貼り付け先のマスをクリックして「貼付け」ボタン";
+}
+/* セルクリップボードをカーソル位置（左上）に貼り付け。対象矩形は一旦クリアして上書き。 */
+function pasteCells(){
+  if (!cellClipboard || !caret) return;
+  const { width, height, cells } = cellClipboard;
+  saveHistory();
+  // 貼り付け矩形を先にクリア（コピー元の空マスもそのまま反映してブロック貼り付けにする）
+  for (let dy = 0; dy < height; dy++)
+    for (let dx = 0; dx < width; dx++){
+      const tx = caret.x + dx, ty = caret.y + dy;
+      if (tx < COLS && ty < ROWS) delete data[key(tx, ty)];
+    }
+  for (const { dx, dy, v } of cells){
+    const tx = caret.x + dx, ty = caret.y + dy;
+    if (tx >= COLS || ty >= ROWS) continue;
+    data[key(tx, ty)] = v;
+  }
+  refreshAll();
+  updateInfo();
+}
+/* ドラッグ選択をキャンセルし、選択前のモードへ復帰する。
+   文字入力モードから始めた選択なら、入力欄と元のカーソル位置へ戻す。 */
+function cancelSelectionRestore(){
+  cancelSelection();
+  if (preSelectMode === "__text"){
+    current = "__text";
+    renderToolbox();
+    if (preSelectCaret) setCaret(preSelectCaret.x, preSelectCaret.y, preSelectCaret.slot);
+    cap.value = preSelectCapValue;     // 打ちかけていた文字列を復元
+    textRunInfo = preSelectTextRun;    // 編集中だったテキストランを復元
+    cap.focus();
+  } else {
+    current = "│";
+    renderToolbox();
+  }
+  preSelectMode = null; preSelectCaret = null;
+  preSelectCapValue = ""; preSelectTextRun = null;
+  updateInfo();
+}
+function deleteSelection(){
+  const r = selRect();
+  if (!r) return;
+  saveHistory();
+  for (let y = r.y1; y <= r.y2; y++)
+    for (let x = r.x1; x <= r.x2; x++)
+      delete data[key(x, y)];
+  cancelSelection();
+  refreshAll();
+  current = "│";
+  renderToolbox();
+}
+
+/* ===== マス挿入：カーソル位置から右へ1マスシフト ===== */
+function insertCell(x, y){
+  saveHistory();
+  for (let cx = COLS - 2; cx >= x; cx--){
+    const v = data[key(cx, y)];
+    if (v !== undefined) data[key(cx + 1, y)] = v; else delete data[key(cx + 1, y)];
+  }
+  delete data[key(x, y)];
+  refreshAll();
+}
+
+/* ===== 消しゴム：削除＋右詰め ===== */
+function eraseAndShift(x, y){
+  let rightMax = x;
+  for (let cx = x+1; cx < COLS; cx++) if (data[key(cx, y)]) rightMax = cx;
+  if (!data[key(x, y)] && rightMax === x) return; // 空マスで右側にも内容なし
+  saveHistory();
+  for (let cx = x; cx < rightMax; cx++){
+    const v = data[key(cx+1, y)];
+    if (v !== undefined) data[key(cx, y)] = v; else delete data[key(cx, y)];
+  }
+  delete data[key(rightMax, y)];
+  for (let cx = x; cx <= rightMax; cx++) paintCell(cx, y);
+  refreshAll();
+}
+
+/* その場削除：カーソル位置のマスだけ消し、右側は詰めない（Shift+Delete / Shift+Backspace）。
+   削除後はセルポインタを1つ右へ進め、連続削除できるようにする（空マスでも前進）。 */
+function eraseInPlace(x, y){
+  if (data[key(x, y)]){
+    saveHistory();
+    delete data[key(x, y)];
+    paintCell(x, y);
+    refreshAll();
+  }
+  setCaret(Math.min(COLS - 1, x + 1), y, 0);
+}
+
+/* ===== 行挿入・行削除 ===== */
+function insertRow(y){
+  saveHistory();
+  // y 行目から下を1行ずつ下へシフト（最終行のデータは消える）
+  for (let row = ROWS - 2; row >= y; row--){
+    for (let x = 0; x < COLS; x++){
+      const ks = key(x, row), kd = key(x, row + 1);
+      if (data[ks] !== undefined){ data[kd] = data[ks]; delete data[ks]; }
+      else delete data[kd];
+    }
+  }
+  refreshAll();
+}
+function deleteRow(y){
+  saveHistory();
+  // y+1 行目から下を1行ずつ上へシフト
+  for (let row = y; row < ROWS - 1; row++){
+    for (let x = 0; x < COLS; x++){
+      const ks = key(x, row + 1), kd = key(x, row);
+      if (data[ks] !== undefined){ data[kd] = data[ks]; delete data[ks]; }
+      else delete data[kd];
+    }
+  }
+  refreshAll();
+}
+
+/* ===== テキストラン編集（Aボタン） ===== */
+
+/* 位置を考慮したテキストラン境界判定。
+   〇 は try/catch 記号（右隣が ─）のときだけ境界。右に ─ が無い〇は文の一部として透過。 */
+function isRunBorder(x, y){
+  const v = data[key(x, y)];
+  if (v === undefined) return false;
+  if (v === "〇"){
+    const right = data[key(x + 1, y)];
+    return right !== undefined && (right === "─" || right[0] === "─");
+  }
+  return SPD_BORDER.has(v);
+}
+
+/* 指定セルが属するテキストランの範囲を返す。罫線・空セルが境界。 */
+function findTextRunAt(x, y){
+  const v = data[key(x, y)];
+  if (!v || isRunBorder(x, y)) return null;
+
+  // 左走査：罫線 or 行頭で停止。空マスは先読みして内容があれば透過。
+  let startX = x;
+  while (startX > 0){
+    const prev = data[key(startX - 1, y)];
+    if (prev !== undefined && isRunBorder(startX - 1, y)) break;
+    if (prev !== undefined){ startX--; continue; }
+    // 空マス：さらに左に非罫線の内容があれば透過
+    let hasMore = false;
+    for (let cx = startX - 2; cx >= 0; cx--){
+      const w = data[key(cx, y)];
+      if (w === undefined) continue;
+      if (!isRunBorder(cx, y)){ hasMore = true; } break;
+    }
+    if (!hasMore) break;
+    startX--;
+  }
+
+  // 右走査：罫線 or 行末で停止。空マスは先読みして内容があれば透過。
+  let endX = x;
+  while (endX < COLS - 1){
+    const next = data[key(endX + 1, y)];
+    if (next !== undefined && isRunBorder(endX + 1, y)) break;
+    if (next !== undefined){ endX++; continue; }
+    // 空マス：さらに右に非罫線の内容があれば透過
+    let hasMore = false;
+    for (let cx = endX + 2; cx < COLS; cx++){
+      const w = data[key(cx, y)];
+      if (w === undefined) continue;
+      if (!isRunBorder(cx, y)){ hasMore = true; } break;
+    }
+    if (!hasMore) break;
+    endX++;
+  }
+
+  return { startX, endX, y };
+}
+
+/* テキストランのセル内容を文字列として取り出す（パディングスペース除去） */
+function extractTextRun({ startX, endX, y }){
+  let text = "";
+  for (let x = startX; x <= endX; ){
+    const v = data[key(x, y)];
+    if (!v){ text += "　"; x++; continue; }  // 空マス（INS挿入ギャップ）→ 全角スペースとして取り出す
+    if (v.length === 1){ text += v; x++; continue; }
+    // 半角マスの連続（半角ラン）をまとめて取り出す。中間マスは両スロットとも実文字で、
+    // パディング空白（TX-21）はランの先頭か末尾にだけある
+    const x0 = x;
+    let s = "";
+    while (x <= endX && data[key(x, y)] && data[key(x, y)].length === 2){ s += data[key(x, y)]; x++; }
+    text += unpadHalfRun(s, data[key(x0 - 1, y)], data[key(x, y)], text);
+  }
+  return text;
+}
+/* 半角ラン s（偶数長）からパディング空白を除く。padAtHead() で書き戻したときに
+   同じ並びになる場合だけ、先頭／末尾の空白をパディングとみなして取り除く。
+   before はここまでに取り出した文字列（引用符の奇偶判定用） */
+function unpadHalfRun(s, leftV, rightV, before){
+  const opening = c => isQuote(c) && [...before].filter(b => b === c).length % 2 === 0;
+  if (s[0] === " "){
+    const r = s.slice(1);
+    if (padAtHead(r, leftV, rightV, opening(r[0]))) return r;   // 先頭パディング → 除去
+  }
+  if (s[s.length - 1] === " "){
+    const r = s.slice(0, -1);
+    if (!padAtHead(r, leftV, rightV, opening(r[0]))) return r;  // 末尾パディング → 除去
+  }
+  return s;                  // パディングなし（両スロットとも実文字）
+}
+
+/* writeChar の行折り返しなし版（テキストラン書き込み専用） */
+function writeCharNoWrap(ch, row, pad){
+  if (!caret || caret.y !== row || caret.x >= COLS) return;
+  if (ch === "\n" || ch === "\r") return;
+  if (!pad && isDroppedSpace(ch)) return;   // 罫線直後の空白は置かない（TX-19）
+  const k = key(caret.x, caret.y);
+  if (isHalf(ch)){
+    const cur = (data[k] && data[k].length === 2) ? data[k] : "  ";
+    if (caret.slot === 0){
+      data[k] = ch + cur[1]; paintCell(caret.x, caret.y); caret.slot = 1;
+    } else {
+      data[k] = cur[0] + ch; paintCell(caret.x, caret.y);
+      caret.x++; caret.slot = 0;
+    }
+  } else {
+    if (caret.slot === 1 && data[k]){ caret.x++; caret.slot = 0; }
+    if (caret.x >= COLS || caret.y !== row) return;
+    data[key(caret.x, caret.y)] = ch; paintCell(caret.x, caret.y);
+    caret.x++; caret.slot = 0;
+  }
+}
+
+/* テキストラン全体を新テキストで置き換え、長短差を吸収して後続セルを詰める */
+function applyTextRunEdit(newText, { startX, endX, y }){
+  // テキストランの直後に隣接するセルを tail として回収（空セルで停止）
+  const tail = [];
+  for (let x = endX + 1; x < COLS; x++){
+    const v = data[key(x, y)];
+    if (v === undefined) break;
+    tail.push(v);
+  }
+  // 元のテキストラン＋tail 領域を消去
+  for (let x = startX; x <= endX + tail.length; x++) delete data[key(x, y)];
+  // キャレットを startX へ移動して新テキストを書き込む（行外へ折り返さない）
+  setCaret(startX, y, 0);
+  anchorX = startX;
+  // 入力末尾の右隣は tail の先頭（パディング位置の判定・TX-21）
+  if (newText) writeText([...expandTabs(newText)], (c, pad) => writeCharNoWrap(c, y, pad), () => tail[0]);
+  // tail を新テキストの直後から詰めて配置
+  const tailX = (caret && caret.y === y)
+    ? (caret.slot === 1 ? caret.x + 1 : caret.x)
+    : COLS;
+  for (let i = 0; i < tail.length; i++){
+    if (tailX + i >= COLS) break;
+    data[key(tailX + i, y)] = tail[i];
+  }
+  refreshAll();
+  moveCaret();
+}
+
+/* ===== 挿入入力（Enter・v1.21.0） =====
+   入力欄の文字列をカーソル位置に挿入し、右側の内容をずらす（Shift+Enter は従来の上書き＝flush）。
+   ・カーソルが文字列（空マスで途切れない一続きのテキスト）の中にあれば、その文字列を
+     「前半＋入力＋後半」で書き直す。半角2文字のマスの途中（右スロット）でも、
+     半角の詰め直しとパディング位置（TX-21）は書き直しで決まり直す
+   ・右側は空マスの手前までをずらす。ずらした分は直後の空マスで吸収し、空マスが足りなければ
+     その先のまとまりも同じだけずらす（上書きで消さない）
+   ・行は折り返さない。右端からはみ出した分は捨てる
+   ・カーソルは挿入した文字列の直後に置く（続けて挿入できる） */
+
+/* 空マスで途切れない一続きのテキスト（罫線・記号は境界）。findTextRunAt と違い空マスは透過しない */
+function findTextRunNoGap(x, y){
+  if (!data[key(x, y)] || isRunBorder(x, y)) return null;
+  let startX = x, endX = x;
+  while (startX > 0 && data[key(startX - 1, y)] && !isRunBorder(startX - 1, y)) startX--;
+  while (endX < COLS - 1 && data[key(endX + 1, y)] && !isRunBorder(endX + 1, y)) endX++;
+  return { startX, endX, y };
+}
+/* テキストランの文字列を、マス cx・スロット slot の位置で前半と後半に分けて返す。
+   取り出し方（パディング除去）は extractTextRun と同じ */
+function splitTextRun({ startX, endX, y }, cx, slot){
+  let text = "", at = -1;
+  for (let x = startX; x <= endX; ){
+    const v = data[key(x, y)];
+    if (x === cx) at = text.length;
+    if (!v){ text += "　"; x++; continue; }
+    if (v.length === 1){
+      text += v; x++;
+      if (x - 1 === cx && slot === 1) at = text.length;   // 全角マスの右スロット＝そのマスの後ろ
+      continue;
+    }
+    const x0 = x;
+    let s = "";
+    while (x <= endX && data[key(x, y)] && data[key(x, y)].length === 2){ s += data[key(x, y)]; x++; }
+    const r = unpadHalfRun(s, data[key(x0 - 1, y)], data[key(x, y)], text);
+    if (cx >= x0 && cx < x){
+      let i = (cx - x0) * 2 + slot;
+      if (r.length < s.length && s[0] === " " && r === s.slice(1)) i--;   // 先頭パディングの分を戻す
+      at = text.length + Math.max(0, Math.min(r.length, i));
+    }
+    text += r;
+  }
+  if (at < 0) at = text.length;
+  return [text.slice(0, at), text.slice(at)];
+}
+function insertText(text){
+  if (!text || !caret) return;
+  const { x, y, slot } = caret;
+  const run = findTextRunNoGap(x, y);
+  let start, end, slot0 = 0, before = "", after = "";
+  if (run){
+    start = run.startX; end = run.endX;
+    [before, after] = splitTextRun(run, x, slot);
+  } else if (data[key(x, y)]){
+    // 罫線・記号のマス：右スロットならそのマスの後ろ、左スロットなら前に挿入する
+    start = slot === 1 ? x + 1 : x; end = start - 1;
+  } else {
+    start = x; end = x - 1; slot0 = slot;   // 空マス：flush と同じくスロットを生かす
+  }
+  if (start >= COLS) return;
+
+  // 書き直す文字列の右側（元の内容）を控えて、書き直し範囲から右端までを空にする
+  const rest = [];
+  for (let cx = end + 1; cx < COLS; cx++) rest.push(data[key(cx, y)]);
+  for (let cx = start; cx < COLS; cx++) delete data[key(cx, y)];
+
+  // 前半＋入力＋後半を書き込み、入力の最後の文字を書いた直後の位置を覚えておく
+  const chars = [...before, ...expandTabs(text), ...after];
+  const target = chars.length - [...after].length;
+  let n = 0, mark = null;
+  setCaret(start, y, slot0);
+  writeText(chars, (c, pad) => {
+    writeCharNoWrap(c, y, pad);
+    if (!pad && ++n === target && caret) mark = { x: caret.x, slot: caret.slot };
+  }, () => rest[0]);
+  if (!mark) mark = { x: caret.x, slot: caret.slot };
+
+  // 右側を d マスずらす。d マス分の空きが最初に現れる位置 p までをずらし、空きで吸収する
+  const tailX = caret.slot === 1 ? caret.x + 1 : caret.x;
+  const d = tailX - (end + 1);
+  let p = 0;
+  if (d > 0){
+    while (p < rest.length && rest.slice(p, p + d).some(v => v !== undefined)) p++;
+  } else {
+    while (p < rest.length && rest[p] !== undefined) p++;   // 短くなった場合はまとまりだけ左へ詰める
+  }
+  for (let i = 0; i < rest.length; i++){
+    if (rest[i] === undefined) continue;
+    const nx = i < p ? end + 1 + d + i : end + 1 + i;
+    if (nx < COLS) data[key(nx, y)] = rest[i];
+  }
+  refreshAll();
+  if (mark.x >= COLS) mark = { x: COLS - 1, slot: 1 };
+  setCaret(mark.x, y, mark.slot);
+}
+
+/* ===== アンドゥ・リドゥ ===== */
+/* スナップショットには編集内容と一緒にファイル名も含める。
+   クリア／Import でファイル名表示を消すため、取り消しでは名前も一緒に戻す。 */
+function takeSnapshot(){
+  return JSON.stringify({ data: data, fileName: currentFileName });
+}
+function saveHistory(){
+  undoStack.push(takeSnapshot());
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+}
+function applySnapshot(snapshot){
+  const snap = JSON.parse(snapshot);
+  for (const k in data) delete data[k];
+  Object.assign(data, snap.data);
+  currentFileName = snap.fileName || "";
+  updateFileName();
+  refreshAll();
+  updateInfo();
+}
+function undo(){
+  if (undoStack.length === 0) return;
+  redoStack.push(takeSnapshot());
+  applySnapshot(undoStack.pop());
+}
+function redo(){
+  if (redoStack.length === 0) return;
+  undoStack.push(takeSnapshot());
+  applySnapshot(redoStack.pop());
+}
+
+/* ===== テキスト生成（Export 用） =====
+   rect（{x1,y1,x2,y2}）を渡すとその矩形だけを出力する（部分Export）。
+   省略時は data/autoSet 全体（x=0..maxX）。インデント判定は出力の左端（x0）を行頭とみなす。
+   raw=true（Shift+Export）では余白正規化（EI-10）を行わず、指定範囲をそのまま出力する。 */
+function buildText(rect, raw){
+  let x0, y0, x1, y1;
+  if (rect){
+    x0 = rect.x1; y0 = rect.y1; x1 = rect.x2; y1 = rect.y2;
+  } else {
+    x0 = 0; y0 = 0; x1 = 0; y1 = 0;
+    for (const k in data){ const [x,y] = k.split(",").map(Number); if (x>x1) x1=x; if (y>y1) y1=y; }
+    for (const k in autoSet){ const [,y] = k.split(",").map(Number); if (y>y1) y1=y; }
+  }
+  // 余白の正規化（EI-10）：出力範囲のうち内容のあるセルの最小 x／最小 y／最大 y まで詰める。
+  // 図を1列目以外・1行目以外から書き始めても、Export したテキストに余分な行頭インデントや
+  // 先頭・末尾の空行が付かないようにする（図の途中の空行は意味を持つのでそのまま残す）。
+  // raw（Shift+Export・EI-09）は別 SPD への転記・ブロック移動に使うため、矩形の形をそのまま保つ。
+  if (!raw){
+    let minX = x1 + 1, minY = y1 + 1, maxY = y0 - 1;
+    for (let y = y0; y <= y1; y++){
+      for (let x = x0; x <= x1; x++){
+        const v = data[key(x,y)] || (autoSet[key(x,y)] ? "│" : "");
+        if (v && !/^[\s　]+$/.test(v)){          // 空マス・全白マスは内容とみなさない
+          if (x < minX) minX = x;                // この行の最左（内側は走査不要）
+          if (y < minY) minY = y;
+          maxY = y;
+          break;
+        }
+      }
+    }
+    // 内容が1つも無ければ範囲はそのまま（全行空 → 空文字出力）
+    if (minX <= x1){ x0 = minX; y0 = minY; y1 = maxY; }
+  }
+  const lines = [];
+  for (let y = y0; y <= y1; y++){
+    let line = "";
+    // インデント領域：行頭（出力左端 x0）から「│ と空白マス」だけで構成される範囲。
+    // この領域の空白（空マス・全角空白だけのマスを含む）は半角空白2個で埋め、
+    // それ以外（内容内の空白）は全角空白で埋める。
+    let inIndent = true;
+    let dqCount = 0, sqCount = 0;                 // 行内の " ' の出現回数（開始/終了の奇偶判定・EI-11）
+    for (let x = x0; x <= x1; x++){
+      const v = data[key(x,y)] || (autoSet[key(x,y)] ? "│" : "");
+      const blank = !v || /^[\s　]+$/.test(v);   // 空マス or 空白だけのマス
+      if (v === "│"){
+        line += "│";                              // │ はインデント継続
+      } else if (blank){
+        line += inIndent ? "  " : "　";            // インデント中は半角2個、内容領域は全角
+      } else {
+        // 引用符パディングの寄せ直し（EI-11）：引用符1文字＋半角空白1個だけのマスは、
+        // 空白が必ず文字列の外側に来る向きで出力する（開始 → " 、終了 → " ）。
+        // 文字数は変えないので図の桁はずれない。
+        if (v.length === 2 && ((v[0] === " " && isQuote(v[1])) || (isQuote(v[0]) && v[1] === " "))){
+          const q = v[0] === " " ? v[1] : v[0];
+          const cnt = q === '"' ? dqCount : sqCount;
+          if (q === '"') dqCount++; else sqCount++;
+          line += (cnt % 2 === 0) ? " " + q : q + " ";   // 偶数=開始（空白は左）／奇数=終了（空白は右）
+        } else {
+          for (const c of v){ if (c === '"') dqCount++; else if (c === "'") sqCount++; }
+          line += v;                              // 実内容
+        }
+        inIndent = false;                         // │ 以外の内容が出たらインデント終了
+      }
+    }
+    lines.push(line.replace(/[\s　]+$/, ""));
+  }
+  return lines.join("\n");
+}
+
+/* ===== Export（クリップボードへコピー） =====
+   範囲選択があればその矩形だけを出力する（部分Export）。なければ全体。
+   plain=true（Shift+Export）ではコメント記号（"""・/*）を付けずに本文だけを出力し、
+   あわせて余白正規化（EI-10）も行わない＝指定範囲をそのまま出力する（転記・ブロック移動用）。
+   props=true（Alt+Export・Java のみ）では全行の行頭に "#  " を付けて出力する（application.properties 用）。
+   ブロックコメント記号では囲まず、空行は "#" だけにする。余白正規化は通常どおり行う。 */
+function doCopy(plain, props){
+  const r = selRect();
+  const body = r ? buildText({ x1:r.x1, y1:r.y1, x2:r.x2, y2:r.y2 }, plain) : buildText(null, plain);
+  const wrapped = plain ? body
+    : props ? body.split("\n").map(s => s ? "#  " + s : "#").join("\n")
+    : currentLang === "python"    ? '"""\n' + body + '\n"""'
+    : currentLang === "thymeleaf" ? "<!--/*\n" + body + "\n*/-->"
+    : "/*\n" + body + "\n*/";
+  navigator.clipboard.writeText(wrapped).catch(() => {});
+  if (r){
+    // 部分Export後は選択を解除して通常モードへ戻す
+    cancelSelection();
+    current = "│";
+    renderToolbox();
+    infoEl.textContent = "選択範囲を" + (plain ? "コメント記号なしで" : props ? "# コメントで" : "")
+                       + "エクスポートしました (" + (r.x2-r.x1+1) + "×" + (r.y2-r.y1+1) + ")";
+  } else if (plain){
+    infoEl.textContent = "コメント記号なしでエクスポートしました";
+  } else if (props){
+    infoEl.textContent = "# コメント（application.properties 用）でエクスポートしました";
+  }
+}
+
+/* ===== Import 用：SPD テキストをセル配列へ解析 =====
+   戻り値 { cells:[{x,y,v}], width, height }（x,y は左上(0,0)起点の相対位置） */
+function parseSPDText(text){
+  const lines = text.split(/\r?\n/);
+  const cells = [];
+  let width = 0;
+  const height = Math.min(lines.length, ROWS);
+  for (let y = 0; y < lines.length && y < ROWS; y++){
+    const line = expandTabs(lines[y]);   // タブインデントを半角空白へ（外部エディタからの貼り付け対策）
+    let x = 0, i = 0;
+    let dqCount = 0, sqCount = 0;  // 行ごとに " ' の出現回数をカウント
+    let inIndent = true;          // インデント領域判定（│ と半角空白で構成。半角空白2個＝空マス）
+    let prevHalf = false;         // 直前のセルが半角か（＝半角ランの途中か）
+    let leftV;                    // 直前のセルの内容（空セルは undefined。パディング位置の判定用・TX-21）
+    const countQuote = c => { if (c === '"') dqCount++; else if (c === "'") sqCount++; };
+    while (i < line.length && x < COLS){
+      const ch = line[i];
+      const next = line[i+1];
+      if (ch === "　"){           // 全角空白＝空セル
+        x++; i++; prevHalf = false; leftV = undefined;
+      } else if (inIndent && ch === " " && (next === " " || !isHalf(next))){
+        // インデントの半角空白：2個で1マス分の空セル（格納しない）。
+        // 奇数個の最後の1個の直後に半角文字が続くときは、先頭パディング（" ." など・TX-21）
+        // として半角ランの側で読む
+        x++; i += (next === " ") ? 2 : 1; prevHalf = false; leftV = undefined;
+      } else if (isHalf(ch)){         // ASCII → 半角2文字で1セル
+        inIndent = false;
+        // 半角ランの先頭で長さが奇数なら、パディングの位置を前後のセルで決める（TX-21）
+        let headPad = false;
+        if (!prevHalf){
+          let j = i;
+          while (j < line.length && isHalf(line[j])) j++;
+          if ((j - i) % 2 === 1){
+            const opening = isQuote(ch) && (ch === '"' ? dqCount : sqCount) % 2 === 0;
+            headPad = padAtHead(line.slice(i, j), leftV, line[j], opening);
+          }
+        }
+        let v;
+        if (headPad){
+          v = " " + ch; countQuote(ch); i++;           // 先頭パディング
+        } else if (next !== undefined && isHalf(next)){
+          v = ch + next; countQuote(ch); countQuote(next); i += 2;   // ペア
+        } else {
+          v = ch + " "; countQuote(ch); i++;           // 末尾パディング
+        }
+        cells.push({ x, y, v });
+        x++; prevHalf = true; leftV = v;
+      } else {                        // 全角文字＝1セル
+        if (ch !== "│") inIndent = false;  // │ はインデント継続、それ以外で終了
+        cells.push({ x, y, v: ch });
+        x++; i++; prevHalf = false; leftV = ch;
+      }
+      if (x > width) width = x;
+    }
+  }
+  return { cells, width, height };
+}
+
+/* ===== Import（クリップボードから読み込み） =====
+   partial=true（Shift+Import）：カーソル位置を左上(0,0)として貼り付ける部分Import。
+     既存データは消さず、貼り付け矩形を一旦クリアしてから書く（ブロック貼り付け）。
+     開いているファイルへの編集なのでファイル名表示は残す。
+   partial=false：従来どおり全体をクリアして列0・行0から展開する。
+     中身が別物になるのでファイル名表示は消す。 */
+// ===== Import 用：コメント記号の除去 =====
+// (1) 囲み記号：空行を除いた最初と最後の行が WRAP_MARKS の組（Java/C・Python・Thymeleaf）なら
+//     その2行（と外側の空行）を取り除く。言語モードに関係なく中身で判定し、行の前後の空白は無視する。
+// (2) 行頭の #（JavaSE・Spring モードのみ）：空行以外のすべての行が # で始まるときだけ、
+//     各行の先頭の "#" と直後の半角空白（最大2個）を取り除く（Alt+Export・EI-13 の逆）。
+// 戻り値 { text, stripped }（stripped=何か取り除いたか）
+const WRAP_MARKS = [["/*", "*/"], ['"""', '"""'], ["<!--/*", "*/-->"]];
+function stripCommentMarks(text){
+  let lines = text.split(/\r?\n/);
+  let stripped = false;
+  const isBlank = s => s.trim() === "";
+  let a = 0, b = lines.length - 1;
+  while (a <= b && isBlank(lines[a])) a++;
+  while (b >= a && isBlank(lines[b])) b--;
+  if (a < b && WRAP_MARKS.some(([o, c]) => lines[a].trim() === o && lines[b].trim() === c)){
+    lines = lines.slice(a + 1, b);
+    stripped = true;
+  }
+  if (isJavaLang(currentLang)){
+    const body = lines.filter(s => !isBlank(s));
+    if (body.length > 0 && body.every(s => s.startsWith("#"))){
+      lines = lines.map(s => s.replace(/^# {0,2}/, ""));
+      stripped = true;
+    }
+  }
+  return { text: lines.join("\n"), stripped };
+}
+
+/* ブロック貼り付け：(ox,oy) を左上として width×height の矩形を一旦クリアし、cells を書き込む
+   （コピー元の空マスもそのまま反映。グリッド範囲外ははみ出し切り捨て）。部分Import・スケルトン共通 */
+function pasteBlock(cells, width, height, ox, oy){
+  for (let dy = 0; dy < height; dy++)
+    for (let dx = 0; dx < width; dx++){
+      const tx = ox + dx, ty = oy + dy;
+      if (tx < COLS && ty < ROWS) delete data[key(tx, ty)];
+    }
+  for (const { x, y, v } of cells){
+    const tx = ox + x, ty = oy + y;
+    if (tx < COLS && ty < ROWS) data[key(tx, ty)] = v;
+  }
+}
+
+/* クリップボードの文字列を読む（Promise）。Eclipse 内では Java の spdGetClipboardText() で読む（EC-07）。
+   WebView2 では navigator.clipboard.readText() が許可しても読めないことがあるため */
+function readClipboardText(){
+  if (typeof window.spdGetClipboardText === "function"){
+    try { return Promise.resolve(window.spdGetClipboardText() || ""); }
+    catch (e) { return Promise.reject(e); }
+  }
+  return navigator.clipboard.readText();
+}
+
+function doPaste(partial){
+  if (partial && !caret){
+    infoEl.textContent = "貼り付け先のマスをクリックしてから Shift+Import してください";
+    return;
+  }
+  readClipboardText().then(text => {
+    if (!text) return;
+    const sc = stripCommentMarks(text);   // 囲み記号・行頭の # を取り除く（EI-14）
+    const { cells, width, height } = parseSPDText(sc.text);
+    saveHistory();
+    if (partial){
+      pasteBlock(cells, width, height, caret.x, caret.y);   // ブロック貼り付け
+    } else {
+      for (const k in data) delete data[k];
+      cancelSelection();
+      clearCaret();
+      forgetFileName();      // 全体を入れ替える＝開いたファイルとは別物なのでファイル名表示を消す
+      for (const { x, y, v } of cells){
+        if (x < COLS && y < ROWS) data[key(x, y)] = v;
+      }
+      current = "│";
+    }
+    refreshAll();
+    renderToolbox();
+    updateInfo();
+    if (sc.stripped) infoEl.textContent = "コメント記号を取り除いてインポートしました";
+  }).catch(() => { infoEl.textContent = "クリップボードを読み取れませんでした"; });
+}
+
+/* ===== スケルトン（SK-01〜07・v1.18.0） =====
+   言語ごとのファイル（PATTERN_FILES）の SPD_PATTERNS（★タイトル 行で区切った SPD テキスト）を読み、
+   タイトル行のセレクトボックスから選ぶと、カーソル位置を左上として部分Import と同じ
+   ブロック貼り付けを行う。貼り付け先の内容は確認なしで上書きする（アンドゥで戻せる）。 */
+const skeletonEl = document.getElementById("skeleton");
+let skeletons = [];                   // [{ title, body }]
+
+/* 言語ごとのスケルトン定義（v1.22.0）。どれも同じ変数 SPD_PATTERNS を定義するので、
+   言語を切り替えたときにその言語のファイルだけを <script> で読み込む（file:// でも動く） */
+const PATTERN_FILES = {
+  java:      "javase-patterns.js",
+  spring:    "spring-patterns.js",
+  thymeleaf: "thymeleaf-patterns.js",
+  python:    "python-patterns.js",
+  c:         "c-patterns.js"
+};
+const skeletonCache = {};             // 言語 → [{ title, body }]（ファイルが無い・空なら []）
+const skeletonLoading = {};           // 読み込み中の言語
+let skeletonLang = null;              // セレクトボックスに並べている言語
+
+/* セレクトボックスを現在の言語のスケルトンにする。renderToolbox から呼ばれる（SK-07） */
+function updateSkeletons(){
+  const lang = currentLang;
+  if (skeletonLang === lang) return;
+  skeletonLang = lang;
+  if (skeletonCache[lang]){ showSkeletons(skeletonCache[lang]); return; }
+  showSkeletons([]);                  // 読み込むまでは隠す
+  if (skeletonLoading[lang]) return;
+  const file = PATTERN_FILES[lang];
+  if (!file){ skeletonCache[lang] = []; return; }
+  skeletonLoading[lang] = true;
+  window.SPD_PATTERNS = undefined;
+  const s = document.createElement("script");
+  const done = list => {
+    skeletonCache[lang] = list;
+    delete skeletonLoading[lang];
+    s.remove();
+    if (skeletonLang === lang) showSkeletons(list);   // 読み込み中に言語が変わっていたら表示しない
+  };
+  // load は読み込んだスクリプトの実行直後に起こるので、SPD_PATTERNS はこの言語のもの
+  s.onload  = () => done(window.SPD_PATTERNS ? parseSkeletons(window.SPD_PATTERNS) : []);
+  s.onerror = () => done([]);
+  s.src = file;
+  document.head.appendChild(s);
+}
+
+/* スケルトンをセレクトボックスに並べる。1つも無ければセレクトボックスを隠す */
+function showSkeletons(list){
+  skeletons = list;
+  skeletonEl.innerHTML = "";
+  skeletonEl.hidden = list.length === 0;
+  if (list.length === 0) return;
+  const head = document.createElement("option");
+  head.value = ""; head.textContent = "スケルトン…";
+  skeletonEl.appendChild(head);
+  list.forEach((p, i) => {
+    const o = document.createElement("option");
+    o.value = String(i); o.textContent = p.title;
+    skeletonEl.appendChild(o);
+  });
+}
+
+/* ★ で始まる行をタイトル、次の ★ までを本文とする。最初の ★ より前の行は無視（説明用）。
+   本文の前後の空行は除き、途中の空行は残す。本文が空のものは捨てる。 */
+function parseSkeletons(src){
+  const list = [];
+  let cur = null;
+  for (const line of String(src).split(/\r?\n/)){
+    const t = line.trim();
+    if (t.startsWith("★")){
+      cur = { title: t.slice(1).trim(), lines: [] };
+      list.push(cur);
+    } else if (cur){
+      cur.lines.push(line);
+    }
+  }
+  const blank = s => /^[\s　]*$/.test(s);
+  return list.map(({ title, lines }) => {
+    let a = 0, b = lines.length;
+    while (a < b && blank(lines[a])) a++;
+    while (b > a && blank(lines[b - 1])) b--;
+    return { title, body: lines.slice(a, b).join("\n") };
+  }).filter(p => p.title && p.body);
+}
+
+skeletonEl.addEventListener("change", () => {
+  const i = skeletonEl.value;
+  skeletonEl.value = "";              // 見出しへ戻す（同じスケルトンを続けて選べるように）
+  skeletonEl.blur();                  // 矢印キー等をグリッド操作へ戻す
+  if (i !== "") insertSkeleton(Number(i));
+});
+
+function insertSkeleton(i){
+  const p = skeletons[i];
+  if (!p) return;
+  if (current === "__select") cancelSelection();
+  textRunInfo = null;
+  if (!caret){
+    infoEl.textContent = "貼り付け先のマスをクリックしてからスケルトンを選んでください";
+    return;
+  }
+  const { cells, width, height } = parseSPDText(p.body);
+  saveHistory();
+  pasteBlock(cells, width, height, caret.x, caret.y);
+  refreshAll();
+  renderToolbox();
+  updateInfo();
+  infoEl.textContent = "スケルトン「" + p.title + "」を貼り付けました";
+}
+
+/* ===== 保存／開く =====
+   File System Access API（Chrome・Edge）が使える場合は showSaveFilePicker /
+   showOpenFilePicker を使い、直近に開いた（保存した）ファイルのフォルダを記憶して
+   次回のダイアログをそこから開始する。非対応ブラウザや file:// で失敗した場合は
+   従来どおり ダウンロード ／ <input type="file"> にフォールバックする（フォルダ記憶は不可）。 */
+const fileNameEl = document.getElementById("filename");
+const PICKER_ID = "spd-editor";       // 開く／保存でダイアログの「前回のフォルダ」を共有するキー
+const PICKER_TYPES = [{ description: "SPD JSON", accept: { "application/json": [".json"] } }];
+let currentFileName = "";             // 現在編集中のファイル名（タイトル行に [○○.json] と表示）
+let lastFileHandle  = null;           // 直近に開いた／保存したファイル（保存ダイアログの初期フォルダに使う）
+let useLegacyPicker = false;          // ピッカーが使えないと判明したら以後は従来方式のみ
+
+function updateFileName(){
+  fileNameEl.textContent = currentFileName ? "[" + currentFileName + "]" : "";
+}
+/* クリアや（全体）Import で中身が別物になったときにファイル名表示を消す。
+   lastFileHandle（保存ダイアログの初期フォルダ）はそのまま残す。 */
+function forgetFileName(){
+  currentFileName = "";
+  updateFileName();
+}
+/* ピッカーの共通オプション。直近ファイルがあれば、そのフォルダから開始する。 */
+function pickerOpts(extra){
+  const o = Object.assign({ id: PICKER_ID, types: PICKER_TYPES }, extra);
+  if (lastFileHandle) o.startIn = lastFileHandle;   // ファイルハンドルを渡すと親フォルダが使われる
+  return o;
+}
+function currentJSON(){
+  return JSON.stringify({ lang: currentLang, data: data }, null, 2);
+}
+
+/* ===== 保存 =====（段3の「保存」ボタンから呼ぶ） */
+async function doSave(){
+  if (IN_ECLIPSE){ requestEclipseSave(); return; }    // Eclipse 内では Eclipse の保存に任せる
+  const json = currentJSON();
+  if (!useLegacyPicker && window.showSaveFilePicker){
+    try {
+      const handle = await window.showSaveFilePicker(
+        pickerOpts({ suggestedName: currentFileName || "spd.json" }));
+      const w = await handle.createWritable();
+      await w.write(json);
+      await w.close();
+      lastFileHandle = handle;
+      currentFileName = handle.name;
+      updateFileName();
+      markSaved();
+      return;
+    } catch(err){
+      if (err && err.name === "AbortError") return;      // ユーザーがキャンセルした
+      useLegacyPicker = true;                            // 以後はフォールバック方式で
+    }
+  }
+  const blob = new Blob([json], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = currentFileName || "spd.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  markSaved();               // ダウンロード方式では保存先での成否が分からないので、保存済みとみなす
+}
+
+/* 読み込んだ JSON テキストを反映する。成功したら true。 */
+function applyLoadedJSON(text){
+  try {
+    const obj = JSON.parse(text);
+    for (const k in data) delete data[k];
+    if (obj.data) Object.assign(data, obj.data);
+    if (obj.lang && LANGS.includes(obj.lang)) currentLang = obj.lang;
+    cancelSelection();
+    clearCaret();
+    current = "│";
+    refreshAll();
+    renderToolbox();
+    updateInfo();
+    return true;
+  } catch(err){
+    alert("ファイルの読み込みに失敗しました");
+    return false;
+  }
+}
+
+/* ===== 開く =====（段3の「開く」ボタンから呼ぶ） */
+async function doLoad(){
+  if (!useLegacyPicker && window.showOpenFilePicker){
+    try {
+      const [handle] = await window.showOpenFilePicker(pickerOpts({ multiple: false }));
+      const file = await handle.getFile();
+      if (applyLoadedJSON(await file.text())){
+        lastFileHandle = handle;                         // このファイルのフォルダを記憶
+        currentFileName = file.name;
+        updateFileName();
+        markSaved();
+      }
+      return;
+    } catch(err){
+      if (err && err.name === "AbortError") return;      // ユーザーがキャンセルした
+      useLegacyPicker = true;
+      infoEl.textContent = "ファイル選択に失敗しました。もう一度「開く」を押してください";
+      return;
+    }
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      if (applyLoadedJSON(ev.target.result)){
+        currentFileName = file.name;                     // フォルダは記憶できない（ブラウザ制約）
+        updateFileName();
+        markSaved();
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  };
+  input.click();
+}
+
+/* ===== 自動保存・離脱確認（v1.14.0） =====
+   編集内容をブラウザの localStorage へ自動保存し、次回起動時に復元できるようにする。
+   AUTOSAVE_INTERVAL ごとに内容を比べ、変わっていたときだけ書き込む。
+   file:// では4つの spd-editor.html が同じ保存領域を共有するため、キーにパスを含めて分ける。
+   あわせて、保存していない変更があるときはページを離れる前にブラウザの確認を出す。 */
+const AUTOSAVE_KEY = "spd-autosave:" + location.pathname;
+const AUTOSAVE_INTERVAL = 2000;       // ミリ秒
+let savedState = "";                  // 最後に保存した／開いた時点の内容（離脱確認の基準）
+let autosavedState = "";              // 最後に自動保存した時点の内容
+let ownsAutosave = false;             // このページが自動保存を書いたか（書く前は他人の保存を消さない）
+
+function editState(){
+  return JSON.stringify({ lang: currentLang, data: data });
+}
+function isDataEmpty(){
+  for (const k in data) return false;
+  return true;
+}
+function isDirty(){
+  return editState() !== savedState;
+}
+/* 保存・開くが成功したときに呼ぶ。以後はこの内容を基準に未保存かどうかを判定する。 */
+function markSaved(){
+  savedState = editState();
+  autosaveNow(true);
+}
+/* 内容が変わっていれば localStorage へ書き込む。force なら変わっていなくても書く。
+   空になったら（全消去など）自動保存を消す。ただし自分で書いた自動保存に限る。 */
+function autosaveNow(force){
+  const state = editState();
+  if (!force && state === autosavedState) return;
+  try {
+    if (isDataEmpty()){
+      if (ownsAutosave) localStorage.removeItem(AUTOSAVE_KEY);
+    } else {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+        lang: currentLang, data: data, fileName: currentFileName,
+        dirty: state !== savedState, savedAt: Date.now() }));
+      ownsAutosave = true;
+    }
+    autosavedState = state;
+  } catch(err){}                      // プライベートウィンドウ等で使えない場合は何もしない
+}
+/* 起動時：未保存の変更を含む自動保存が残っていれば、復元するか確認する。
+   キャンセルしても自動保存は残し、次に編集するまでは上書きしない。 */
+function restoreAutosave(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(AUTOSAVE_KEY)); } catch(err){}
+  if (!saved || !saved.dirty || !saved.data) return;
+  const when = new Date(saved.savedAt).toLocaleString("ja-JP");
+  const name = saved.fileName ? "［" + saved.fileName + "］" : "";
+  if (!confirm("保存していない前回の作業内容" + name + "が残っています（" + when + " 自動保存）。\n"
+             + "復元しますか？\n\n"
+             + "キャンセルすると空の状態で始めます（前回の内容は、編集を始めるまでは残ります）。")) return;
+  if (!applyLoadedJSON(JSON.stringify(saved))) return;
+  currentFileName = saved.fileName || "";
+  updateFileName();
+  infoEl.textContent = "前回の作業内容を復元しました（まだファイルには保存されていません）";
+}
+function startAutosave(){
+  savedState = autosavedState = editState();
+  restoreAutosave();
+  setInterval(autosaveNow, AUTOSAVE_INTERVAL);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") autosaveNow();
+  });
+  window.addEventListener("beforeunload", e => {
+    autosaveNow();
+    if (isDirty()){ e.preventDefault(); e.returnValue = ""; }
+  });
+}
+
+/* ===== マウス操作 ===== */
+/* ドラッグで矩形選択 ／ 単純クリックでカーソル移動・入力位置指定。
+   dragAnchor: mousedown 起点セル。dragging: 別セルへ動いて選択に切り替わったか。 */
+let dragAnchor = null;
+let dragging = false;
+let preSelectMode = null;     // ドラッグ選択に入る前のモード（キャンセル時の復帰先）
+let preSelectCaret = null;    // 同・カーソル位置
+let preSelectCapValue = "";   // 同・入力欄に打ちかけていた文字列
+let preSelectTextRun = null;  // 同・編集中だったテキストラン情報
+
+grid.addEventListener("mousedown", e => {
+  if (e.button !== 0) return;
+  const cell = e.target.closest(".data");
+  if (!cell) return;
+  e.preventDefault();  // ドラッグ中のネイティブ文字選択を抑止
+  dragAnchor = { x: +cell.dataset.x, y: +cell.dataset.y };
+  dragging = false;
+});
+
+grid.addEventListener("mousemove", e => {
+  if (!dragAnchor || e.buttons !== 1) return;
+  const cell = e.target.closest(".data");
+  if (!cell) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+  // 起点と同じマスにいる間はまだクリック扱い（微小なジッターで選択を始めない）
+  if (!dragging && x === dragAnchor.x && y === dragAnchor.y) return;
+  if (!dragging){
+    // ドラッグ開始：矩形選択モードへ切り替え（キャンセル時に戻れるよう直前の状態を保存）
+    dragging = true;
+    preSelectMode = current;
+    preSelectCaret = caret ? { ...caret } : null;
+    preSelectCapValue = cap.value;
+    preSelectTextRun = textRunInfo;
+    clearCaret();
+    textRunInfo = null;
+    if (current === "__text") cap.value = "";
+    current = "__select";
+    selectP1 = { x: dragAnchor.x, y: dragAnchor.y };
+    renderToolbox();
+  }
+  selectP2 = { x, y };
+  redrawSelection();
+  updateInfo();
+});
+
+document.addEventListener("mouseup", e => {
+  if (!dragAnchor) return;
+  const wasDragging = dragging;
+  dragAnchor = null;
+  dragging = false;
+
+  /* ドラッグで選択した → そのまま確定（移動／Delete／ESC は既存処理が担う） */
+  if (wasDragging){ updateInfo(); return; }
+
+  /* 単純クリック */
+  const cell = e.target.closest(".data");
+  if (!cell) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+
+  /* 既存の選択があるときのクリック → 選択領域をその位置へ移動 */
+  if (current === "__select" && selectP1 && selectP2){
+    moveSelection(x, y);
+    return;
+  }
+  /* 選択モードだが選択が無い（ESC 後など）→ 通常モードへ戻す */
+  if (current === "__select"){
+    cancelSelection();
+    current = "│"; renderToolbox();
+  }
+
+  /* クリックしたマスにカーソルを移動（操作はボタン押下時） */
+  const rect = cell.getBoundingClientRect();
+  const slot = (e.clientX - rect.left) < CELLW/2 ? 0 : 1;
+  setCaret(x, y, slot);
+
+  /* 文字モード中：入力位置が変わるので編集途中の内容を破棄し、入力欄へフォーカス */
+  if (current === "__text"){
+    cap.value = "";
+    textRunInfo = null;
+    cap.focus();
+  }
+});
+
+/* ダブルクリックで文字入力／編集モードに入る。
+   ・空セル          → 新規テキスト入力モード（入力欄を空にしてその位置から入力）
+   ・テキストのセル   → テキスト編集モード（属するテキストランを入力欄へ展開＝Aボタン相当）
+   ・罫線・記号のセル → 何もしない（isRunBorder により findTextRunAt が null を返す） */
+grid.addEventListener("dblclick", e => {
+  const cell = e.target.closest(".data");
+  if (!cell) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+  const v = data[key(x, y)];
+
+  if (!v){
+    /* 空セル：新規テキスト入力モード */
+    const rect = cell.getBoundingClientRect();
+    const slot = (e.clientX - rect.left) < CELLW/2 ? 0 : 1;
+    setCaret(x, y, slot);
+    current = "__text";
+    textRunInfo = null;
+    renderToolbox();
+    cap.value = "";
+    cap.focus();
+    updateInfo();
+    return;
+  }
+
+  /* 有内容セル：テキストランがあれば編集モードへ。罫線・記号なら何もしない */
+  const run = findTextRunAt(x, y);
+  if (!run) return;
+  textRunInfo = run;
+  setCaret(run.startX, y, 0);
+  current = "__text";
+  renderToolbox();
+  cap.value = extractTextRun(run);
+  cap.focus();
+  cap.select();
+  updateInfo();
+});
+
+/* ===== キーボード ===== */
+const cap = document.getElementById("cap");
+
+cap.addEventListener("keydown", e => {
+  if (e.isComposing) return;
+  if (e.key === "Escape"){
+    e.preventDefault();
+    // 文字入力中にドラッグ選択した場合：選択をクリアして文字入力モードへ復帰
+    if (current === "__select"){ cancelSelectionRestore(); return; }
+    cap.value = "";
+    textRunInfo = null;
+    current = "│";
+    renderToolbox();
+    updateInfo();
+    cap.blur();
+    return;
+  }
+  if (e.key === "Enter"){
+    e.preventDefault();
+    const text = cap.value; cap.value = "";
+    if (textRunInfo){
+      // テキストラン編集モード：空文字でも適用（=元テキストを削除して後続を詰める）
+      saveHistory();
+      applyTextRunEdit(text, textRunInfo);
+      textRunInfo = null;
+      current = "│";
+      renderToolbox();
+      updateInfo();
+    } else {
+      if (!text) return;
+      ensureTextMode();
+      saveHistory();
+      // Enter＝カーソル位置に挿入、Shift+Enter＝カーソル位置から上書き（v1.21.0）
+      if (e.shiftKey) flush(text);
+      else            insertText(text);
+      current = "│";
+      renderToolbox();
+      updateInfo();
+    }
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.target === cap) return;
+  if (e.ctrlKey && e.key === "z"){ e.preventDefault(); undo(); return; }
+  if (e.ctrlKey && e.key === "y"){ e.preventDefault(); redo(); return; }
+  if (current === "__select"){
+    if (e.key === "Escape"){
+      e.preventDefault(); cancelSelectionRestore();
+    } else if ((e.key === "Delete" || e.key === "Backspace") && selectP1 && selectP2){
+      e.preventDefault(); deleteSelection();
+    }
+    return;
+  }
+  /* 通常モード：Delete / Backspace で消しゴム（右詰め）。Mac の delete キーは Backspace 扱い。
+     Shift 併用時はその場削除（右側を詰めない） */
+  if ((e.key === "Delete" || e.key === "Backspace") && caret){
+    e.preventDefault();
+    if (e.shiftKey) eraseInPlace(caret.x, caret.y);
+    else            eraseAndShift(caret.x, caret.y);
+    return;
+  }
+  /* 矢印キーでカーソルを1マス移動（矩形選択モードを除く）。未設定なら原点に設置 */
+  if (e.key.startsWith("Arrow") && current !== "__select"){
+    e.preventDefault();
+    let x = 0, y = 0;
+    if (caret){
+      x = caret.x; y = caret.y;
+      if (e.key === "ArrowLeft")  x = Math.max(0, x - 1);
+      if (e.key === "ArrowRight") x = Math.min(COLS - 1, x + 1);
+      if (e.key === "ArrowUp")    y = Math.max(0, y - 1);
+      if (e.key === "ArrowDown")  y = Math.min(ROWS - 1, y + 1);
+    }
+    setCaret(x, y, 0);
+    refs[y]?.[x]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  if (e.key === "Escape" && (current === "__inscell" || current === "__text" || current === "__erase")){
+    e.preventDefault();
+    if (current === "__text"){ cap.value = ""; textRunInfo = null; cap.blur(); }
+    current = "│"; renderToolbox(); updateInfo();
+  }
+});
+
+function ensureTextMode(){
+  if (current !== "__text"){ current = "__text"; renderToolbox(); }
+  if (!caret) setCaret(1, 1, 0);
+}
+
+/* ===== クリア ===== */
+function clearAll(){
+  saveHistory();
+  for (const k in data) delete data[k];
+  cancelSelection();
+  textRunInfo = null;
+  forgetFileName();          // 中身が空になる＝開いたファイルとは別物なのでファイル名表示を消す
+  refreshAll();
+  clearCaret();
+  current = "│";
+  renderToolbox();
+  updateInfo();
+}
+
+/* ===== Eclipse 連携（約束事は eclipse-spd-plugin の CLAUDE.md を参照。変更するときは SpdBrowser.java も同時に直す） =====
+   Java → JS : loadSpd(text) ／ getSpdText()
+   JS → Java : spdGetInitialText() ／ spdNotifyChanged() ／ spdRequestSave() ／ spdGetClipboardText()（Import）
+   .spd ファイルの中身は「保存」ボタンと同じ JSON（{ lang, data }）。
+   Java 側関数は存在チェックしてから呼ぶ（単体のブラウザでもそのまま動くように）。 */
+function setupEclipseBridge(){
+  /* 変更検知：操作のたびに内容（言語を含む）を比べ、変わっていれば Java へ通知する。
+     Import はクリップボード読み取りが非同期なので、取りこぼし対策に定期チェックも併用する。 */
+  const check = () => {
+    if (eclipseLastState === null) return;            // 読み込み前・読み込み中は通知しない
+    const state = editState();
+    if (state === eclipseLastState) return;
+    eclipseLastState = state;
+    if (typeof window.spdNotifyChanged === "function") window.spdNotifyChanged();
+  };
+  const later = () => setTimeout(check, 0);           // イベント処理（編集）が終わってから比べる
+  ["click", "mouseup", "keyup", "change", "input"].forEach(t =>
+    document.addEventListener(t, later, true));
+  setInterval(check, 1000);
+
+  /* Ctrl+S（入力欄にフォーカスがあっても）→ Eclipse の保存 */
+  document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s"){
+      e.preventDefault();
+      e.stopPropagation();
+      requestEclipseSave();
+    }
+  }, true);
+}
+let eclipseLastState = null;          // 最後に読み込んだ／保存用に渡した／通知した時点の内容
+
+function requestEclipseSave(){
+  if (typeof window.spdRequestSave === "function") window.spdRequestSave();
+}
+
+/* Java → JS：ファイル内容を画面に読み込む。読み込み中は変更通知を出さない。
+   空ファイル（新規作成直後）は空のグリッドで開き、言語は spd-config.js の既定のまま。
+   JSON でなければ SPD テキスト（Export した形式）とみなしてインポートする。 */
+function loadSpd(text){
+  eclipseLastState = null;
+  const src = text == null ? "" : String(text);
+  for (const k in data) delete data[k];
+  undoStack.length = 0;
+  redoStack.length = 0;
+  cancelSelection();
+  clearCaret();
+  textRunInfo = null;
+  current = "│";
+  try {
+    if (/^\s*\{/.test(src)){
+      const obj = JSON.parse(src);
+      if (obj.data) Object.assign(data, obj.data);
+      if (obj.lang && LANGS.includes(obj.lang)) currentLang = obj.lang;
+    } else if (src.trim()){
+      const { cells } = parseSPDText(stripCommentMarks(src).text);
+      for (const { x, y, v } of cells){
+        if (x < COLS && y < ROWS) data[key(x, y)] = v;
+      }
+    }
+  } catch(err){
+    alert("SPD ファイルの読み込みに失敗しました（JSON の形式が正しくありません）");
+  }
+  refreshAll();
+  renderToolbox();
+  updateInfo();
+  eclipseLastState = editState();
+}
+
+/* Java → JS：保存用に現在の内容を JSON 文字列で返す */
+function getSpdText(){
+  eclipseLastState = editState();     // 保存後の編集で再び変更通知が出るよう基準を更新する
+  return currentJSON();
+}
+
+/* 初期化 */
+// 設定ファイル（spd-config.js）があれば言語モードを反映（無ければ既定 python のまま）
+if (typeof SPD_CONFIG !== "undefined" && SPD_CONFIG && SPD_CONFIG.lang
+    && LANGS.includes(SPD_CONFIG.lang)){
+  currentLang = SPD_CONFIG.lang;
+}
+// 既定の言語がラジオに出す言語（SPD_CONFIG.langs）に無ければ、その先頭にする
+if (!configLangs().includes(currentLang)) currentLang = configLangs()[0];
+renderToolbox();       // 現在の言語のスケルトンもここで読み込む（SK-07）
+updateInfo();
+if (IN_ECLIPSE){
+  setupEclipseBridge();  // 保存・ダーティ管理は Eclipse が行うので、自動保存と離脱確認は使わない
+} else {
+  startAutosave();
+}
+</script>
+</body>
+</html>
