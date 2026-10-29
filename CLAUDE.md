@@ -1,6 +1,7 @@
 # CLAUDE.md — SPD Editor for VS Code
 
-HTML/JavaScript 製の SPD エディタを VS Code 拡張機能にするプロジェクト。計画は `docs/plan.md`。
+HTML/JavaScript 製の SPD エディタを VS Code 拡張機能にするプロジェクト。
+計画は `docs/plan.md`、Marketplace への公開手順は `docs/marketplace-howto.md`（`docs/` は手元だけで、リポジトリには含めない）。
 Eclipse 版（`I:\eclipse-spd-plugin`、GitHub: kawaba/eclipse-spd-plugin）と同じ考え方で作っている。
 
 ## 基本方針
