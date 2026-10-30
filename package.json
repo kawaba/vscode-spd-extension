@@ -5,6 +5,7 @@
   "version": "1.22.0",
   "publisher": "kawaba",
   "license": "EPL-2.0",
+  "icon": "icons/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/kawaba/vscode-spd-extension.git"
