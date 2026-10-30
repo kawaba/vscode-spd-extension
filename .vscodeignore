@@ -8,3 +8,4 @@ sync-web.ps1
 CLAUDE.md
 .gitignore
 **/*.vsix
+.github/**

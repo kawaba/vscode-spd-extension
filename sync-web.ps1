@@ -2,7 +2,8 @@
   元の SPD エディタ（kawaba/spd-editor）から、拡張機能の media/ へファイルを複製する。
   media/editor.html などはこのスクリプトで上書きするので、直接編集しない（直すのは元の spd-editor.html）。
   UTF-8 でないファイル（Shift_JIS）は UTF-8 に変換して複製する。
-  あわせて、拡張機能の版（package.json の version）を SPD エディタの版（ver. X.Y.Z）にそろえる。
+  あわせて、拡張機能の版（package.json の version）を SPD エディタの版（ver. X.Y.Z）にそろえる
+  （拡張機能だけ直して版を上げたあとで、SPD エディタの版の方が古いときはそのままにする）。
 
     元の spd-editor.html                → media/editor.html
     元の 2-java/javase-patterns.js      → media/javase-patterns.js
@@ -39,6 +40,7 @@ $files = @(
 # （メモ帳などで Shift_JIS 保存された場合）文字化けしてスケルトンが出なくなるので、Shift_JIS とみなして UTF-8 に変換する
 $utf8Strict = New-Object System.Text.UTF8Encoding($false, $true)   # BOM なし・不正なバイトで例外
 $sjis = [System.Text.Encoding]::GetEncoding(932)
+$updated = $false
 
 foreach ($f in $files) {
     $from = Join-Path $Source $f.From
@@ -58,6 +60,7 @@ foreach ($f in $files) {
         Write-Host ("変更なし  " + $f.To + $note)
     } else {
         [System.IO.File]::WriteAllBytes($to, $bytes)
+        $updated = $true
         Write-Host ("更新      " + $f.To + "  ← " + $f.From + $note)
     }
 }
@@ -69,11 +72,18 @@ $ver = $m.Matches[0].Groups[1].Value
 Write-Host ("SPD エディタ ver. " + $ver)
 
 # 拡張機能の版を SPD エディタの版にそろえる（package.json の書式はそのままで "version" の行だけ書き換える）
+# 拡張機能だけ直して Z を上げた（1.22.0 → 1.22.1）ときは、SPD エディタの版より先に進んでいることがある。
+# Marketplace は同じ版を二度出せないので、そのときは版を戻さない
 $pkg = Join-Path $PSScriptRoot "package.json"
 $text = [System.IO.File]::ReadAllText($pkg, $utf8Strict)
 $cur = [regex]::Match($text, '"version"\s*:\s*"([^"]*)"').Groups[1].Value
 if ($cur -eq $ver) {
     Write-Host ("拡張機能の版  変更なし（$cur）")
+} elseif ([version]$cur -gt [version]$ver) {
+    Write-Host ("拡張機能の版  変更なし（$cur。SPD エディタ ver. $ver より進んでいる）")
+    if ($updated) {
+        Write-Warning ("画面を更新しました。$cur を公開済みなら、package.json の版を手で上げてください（Z を 1 つ上げる）")
+    }
 } else {
     $text = [regex]::Replace($text, '("version"\s*:\s*")[^"]*(")', "`${1}$ver`${2}", 1)
     [System.IO.File]::WriteAllText($pkg, $text, $utf8Strict)

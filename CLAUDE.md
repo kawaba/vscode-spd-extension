@@ -23,12 +23,17 @@ media/*-patterns.js       スケルトン。元の 1-python・2-java・3-C か�
 media/bridge.js           拡張機能専用。Eclipse の Java 側（SpdBrowser.java）に当たる関数を postMessage で用意する
 media/vscode-theme.css    拡張機能専用。editor.html の色を VS Code のテーマ変数で上書きする
 media/fonts/              PlemolJP HS（Eclipse 版の web/fonts/ と同じもの）
+icons/icon.png            Marketplace 用のアイコン（256×256）。spd.png・spd@2x.png はタブのボタン用
+.github/workflows/publish.yml  タグ v* の push で Marketplace に公開（Trusted Publishing。PAT は使わない）
 ```
 
 ## 元の SPD エディタとの関係（二重管理しない）
 
 - 画面の本体は `D:\★SPD\spd-editor\spd-editor.html`。修正は元で行い（版と仕様書 `spd-editor-spec.md` も上げる）、
   `powershell -ExecutionPolicy Bypass -File .\sync-web.ps1` で複製する。拡張機能の版（package.json）も SPD エディタの版にそろう
+- 拡張機能の側だけを直して出し直すときは Z を上げる（1.22.0 → 1.22.1。2026-10-30 決定）。Marketplace は同じ版を二度出せず、
+  `X.Y.Z` しか受け付けない（Eclipse 版の `v1.22.0-2` のような枝番は使えない）。SPD エディタの版とずれることがあり、
+  そのとき sync-web.ps1 は版を戻さない（画面を更新したのに版が進まなければ警告するので、手で上げる）
 - editor.html は Eclipse 連携（元の仕様書 §6.13・§7.13e）の約束事で動かしている。`window.spdGetInitialText` があると
   「Eclipse 内」（`IN_ECLIPSE`）と判断して、自動保存・離脱確認・「開く」ボタンを止め、保存を `spdRequestSave()` に回す
 - 約束事（`loadSpd`・`getSpdText`・`spdNotifyChanged` など）を元で変えるときは、Eclipse 版の SpdBrowser.java と
@@ -62,5 +67,8 @@ npm install
 npm run compile      # out/ に出力
 npm run package      # spd-editor-X.Y.Z.vsix を作る
 ```
+
+公開は package.json の版と同じタグ（`vX.Y.Z`）の push。publish.yml がタグと版の一致を確かめてから
+`npx @vscode/vsce@4 publish --oidc` を実行する（vsce 4 は Node.js 22 以上。手元の `npm run package` は devDependencies の vsce 3 のまま）。
 
 F5 で拡張機能開発ホストが起動する（`.vscode/launch.json`）。

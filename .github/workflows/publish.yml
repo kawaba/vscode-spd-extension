@@ -1,0 +1,41 @@
+# タグ（v1.22.1 など）を push したら、VS Code Marketplace に公開する。
+# PAT は使わない。Marketplace の Trusted Publishing（OIDC）で認証する。
+#   Marketplace の管理画面 → publisher「kawaba」→ Trusted Publishing に、
+#   このリポジトリ（kawaba/vscode-spd-extension）とこのファイル名（publish.yml）を登録してある。
+#   ファイル名を変えるときは、管理画面の登録も直す。
+# --oidc は vsce 4 から、vsce 4 は Node.js 22 以上が必要。手元の npm run package は vsce 3 のままでよい
+name: Marketplace に公開
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # タグと package.json の版が違うと、意図しない版が出てしまうので止める
+      - name: 版を確かめる
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          if [ "v$ver" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::タグ $GITHUB_REF_NAME と package.json の版 $ver が違います"
+            exit 1
+          fi
+
+      # vscode:prepublish（npm run compile）でコンパイルしてから公開する
+      - name: 公開
+        run: npx -y @vscode/vsce@4 publish --oidc
