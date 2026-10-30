@@ -3,7 +3,7 @@
   "displayName": "SPD Editor",
   "description": "SPD（構造化プログラム設計図）エディタ。.spd ファイルを方眼の画面で描いて編集できます。",
   "version": "1.22.0",
-  "publisher": "powercampus",
+  "publisher": "kawaba",
   "license": "EPL-2.0",
   "repository": {
     "type": "git",
