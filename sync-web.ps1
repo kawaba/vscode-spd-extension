@@ -6,11 +6,11 @@
   （拡張機能だけ直して版を上げたあとで、SPD エディタの版の方が古いときはそのままにする）。
 
     元の spd-editor.html                → media/editor.html
-    元の 2-java/javase-patterns.js      → media/javase-patterns.js
-    元の 2-java/spring-patterns.js      → media/spring-patterns.js
-    元の 2-java/thymeleaf-patterns.js   → media/thymeleaf-patterns.js
-    元の 1-python/python-patterns.js    → media/python-patterns.js
-    元の 3-C/c-patterns.js              → media/c-patterns.js
+    元の patterns/javase-patterns.js    → media/patterns/javase-patterns.js
+    元の patterns/spring-patterns.js    → media/patterns/spring-patterns.js
+    元の patterns/thymeleaf-patterns.js → media/patterns/thymeleaf-patterns.js
+    元の patterns/python-patterns.js    → media/patterns/python-patterns.js
+    元の patterns/c-patterns.js         → media/patterns/c-patterns.js
 
   spd-config.js は使わない（言語の設定は VS Code の設定 spd.languages・spd.defaultLanguage から bridge.js が渡す）。
   media/bridge.js・media/vscode-theme.css は拡張機能専用なので複製しない。
@@ -29,12 +29,21 @@ $media = Join-Path $PSScriptRoot "media"
 
 $files = @(
     @{ From = "spd-editor.html";              To = "editor.html" },
-    @{ From = "2-java\javase-patterns.js";    To = "javase-patterns.js" },
-    @{ From = "2-java\spring-patterns.js";    To = "spring-patterns.js" },
-    @{ From = "2-java\thymeleaf-patterns.js"; To = "thymeleaf-patterns.js" },
-    @{ From = "1-python\python-patterns.js";  To = "python-patterns.js" },
-    @{ From = "3-C\c-patterns.js";            To = "c-patterns.js" }
+    @{ From = "patterns\javase-patterns.js";    To = "patterns\javase-patterns.js" },
+    @{ From = "patterns\spring-patterns.js";    To = "patterns\spring-patterns.js" },
+    @{ From = "patterns\thymeleaf-patterns.js"; To = "patterns\thymeleaf-patterns.js" },
+    @{ From = "patterns\python-patterns.js";    To = "patterns\python-patterns.js" },
+    @{ From = "patterns\c-patterns.js";         To = "patterns\c-patterns.js" }
 )
+
+# 元で使わなくなった置き場所（v1.22.x までの media/ 直下のスケルトン）は media/ からも消す
+foreach ($old in @("javase-patterns.js", "spring-patterns.js", "thymeleaf-patterns.js", "python-patterns.js", "c-patterns.js")) {
+    $p = Join-Path $media $old
+    if (Test-Path $p) {
+        Remove-Item $p
+        Write-Host ("削除      " + $old)
+    }
+}
 
 # editor.html は UTF-8 のページで、JS も UTF-8 として読む。元が UTF-8 でなければ
 # （メモ帳などで Shift_JIS 保存された場合）文字化けしてスケルトンが出なくなるので、Shift_JIS とみなして UTF-8 に変換する
@@ -46,6 +55,7 @@ foreach ($f in $files) {
     $from = Join-Path $Source $f.From
     $to   = Join-Path $media $f.To
     if (-not (Test-Path $from)) { throw "見つかりません: $from" }
+    New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null
     $bytes = [System.IO.File]::ReadAllBytes($from)
     $note = ""
     try {

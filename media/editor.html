@@ -26,9 +26,10 @@
   h1{ font-size:15px; font-weight:600; margin:0; letter-spacing:.02em; text-align:right; }
   h1 .ver{ font-size:12px; font-weight:400; color:var(--text-dim); margin-left:8px; letter-spacing:0; }
   .langbar{ display:flex; align-items:center; gap:10px; }
-  /* 📖💡 外部リンク（タイトル行・「SPD Editor」表示の左側）。
-     2つの絵文字はクリックしやすいよう 28px の当たり判定を持たせ、間隔を 14px あける。 */
+  /* ❓📖💡 外部リンク（タイトル行・「SPD Editor」表示の左側）。
+     絵文字はクリックしやすいよう 28px の当たり判定を持たせ、ボタン同士の間隔は 2px にする（v1.23.0）。 */
   .titleright{ display:flex; align-items:center; gap:14px; }
+  .helplinks{ display:flex; align-items:center; gap:2px; }
   .helplink{
     display:inline-flex; align-items:center; justify-content:center;
     width:28px; height:28px; font-size:18px; line-height:1;
@@ -36,7 +37,7 @@
     font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",var(--mono);
   }
   .helplink:hover{ background:var(--accent-bg); }
-  /* スケルトン選択（タイトル行・📖 の左・v1.18.0）。言語ごとの xxx-patterns.js が無ければ非表示（v1.22.0） */
+  /* スケルトン選択（タイトル行・❓ の左・v1.18.0）。言語ごとの xxx-patterns.js が無ければ非表示（v1.22.0） */
   select.skeleton{
     font-family:var(--mono); font-size:12px; height:28px; padding:0 6px;
     background:#fff; color:var(--text);
@@ -117,9 +118,12 @@
   </div>
   <div class="titleright">
     <select class="skeleton" id="skeleton" title="スケルトン（決まった枝のひな形）をカーソル位置へ貼り付け" hidden></select>
-    <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
-    <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
-    <h1>SPD Editor<span class="ver">ver. 1.22.0</span></h1>
+    <div class="helplinks">
+      <a class="helplink" id="lnkHelp" href="#" target="_blank" rel="noopener noreferrer" title="SPDエディタの使い方">&#x2753;</a>
+      <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
+      <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
+    </div>
+    <h1>SPD Editor<span class="ver">ver. 1.23.0</span></h1>
   </div>
 </div>
 
@@ -144,7 +148,7 @@
            （langs：ラジオに出す言語。省略時は全言語・v1.22.0）
      ファイルが無ければ読み込み失敗（無視）し、従来どおり既定で起動する。
      <script src> はローカル直開き(file://)・サーバ運用のどちらでも動作する。
-     スケルトン定義（xxx-patterns.js）は言語を切り替えたときに読み込む（PATTERN_FILES・v1.22.0）。 -->
+     スケルトン定義（patterns/xxx-patterns.js）は言語を切り替えたときに読み込む（PATTERN_FILES・v1.22.0）。 -->
 <script src="spd-config.js"></script>
 
 <script>
@@ -333,22 +337,26 @@ for (let y = 0; y < ROWS; y++){
   }
 }
 
-/* ===== 外部リンク（📖 解説・書き方 ／ 💡 記述パターン） =====
-   📖 は言語によらず 1ページ固定。💡 は選択中の言語ごとに別ページへ飛ぶ。
-   確定しているのは java の 💡 のみ。他は仮URL（ダミー）なので、
-   確定し次第この下の定数を書き換えるだけでよい。 */
-const GUIDE_URL = "https://k-webs.jp/spd/spd-guide.pdf";        // 仮URL（未確定）
+/* ===== 外部リンク（❓ エディタの使い方 ／ 📖 解説・書き方 ／ 💡 記述パターン） =====
+   ❓ 📖 は言語によらず 1ページ固定。💡 は選択中の言語ごとに別ページへ飛ぶ。
+   どのページも公開サイトの documents/ に集めて絶対URLで開く（ローカル・拡張機能でも同じ・v1.23.0）。
+   サーバはファイル名の大文字・小文字を区別する（C は spd-C.html）。 */
+const DOCS_URL  = "https://k-webs.jp/spd/documents/";
+const HELP_URL  = DOCS_URL + "howto-spdeditor.html";
+const GUIDE_URL = DOCS_URL + "spd-guide.html";
 const PATTERN_URL = {
-  java:   "https://k-webs.jp/spd/spd-java.html",                 // 確定
-  spring: "https://k-webs.jp/spd/spd-java.html",                 // JavaSE と同じページ
-  python: "https://k-webs.jp/spd/spd-python.html",               // 仮URL（未確定）
-  c:      "https://k-webs.jp/spd/spd-c.html"                     // 仮URL（未確定）
+  java:   DOCS_URL + "spd-java.html",
+  spring: DOCS_URL + "spd-java.html",                            // JavaSE と同じページ
+  python: DOCS_URL + "spd-python.html",
+  c:      DOCS_URL + "spd-C.html"
 };
+const lnkHelp    = document.getElementById("lnkHelp");
 const lnkGuide   = document.getElementById("lnkGuide");
 const lnkPattern = document.getElementById("lnkPattern");
 
 /* 💡 のリンク先を現在の言語に合わせる（言語切替のたびに renderToolbox から呼ばれる） */
 function updateHelpLinks(){
+  lnkHelp.href = HELP_URL;
   lnkGuide.href = GUIDE_URL;
   lnkPattern.href = PATTERN_URL[currentLang] || PATTERN_URL.java;
   const langName = LANG_NAMES[currentLang] || "Java";
@@ -1522,7 +1530,9 @@ const skeletonEl = document.getElementById("skeleton");
 let skeletons = [];                   // [{ title, body }]
 
 /* 言語ごとのスケルトン定義（v1.22.0）。どれも同じ変数 SPD_PATTERNS を定義するので、
-   言語を切り替えたときにその言語のファイルだけを <script> で読み込む（file:// でも動く） */
+   言語を切り替えたときにその言語のファイルだけを <script> で読み込む（file:// でも動く）。
+   ファイルは spd-editor.html と同じフォルダの patterns/ に全言語分を置く（v1.23.0） */
+const PATTERN_DIR = "patterns/";
 const PATTERN_FILES = {
   java:      "javase-patterns.js",
   spring:    "spring-patterns.js",
@@ -1556,7 +1566,7 @@ function updateSkeletons(){
   // load は読み込んだスクリプトの実行直後に起こるので、SPD_PATTERNS はこの言語のもの
   s.onload  = () => done(window.SPD_PATTERNS ? parseSkeletons(window.SPD_PATTERNS) : []);
   s.onerror = () => done([]);
-  s.src = file;
+  s.src = PATTERN_DIR + file;
   document.head.appendChild(s);
 }
 

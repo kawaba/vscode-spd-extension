@@ -19,7 +19,7 @@ src/spdEditorProvider.ts  .spd のカスタムエディタ（CustomTextEditorPro
 src/spdViewProvider.ts    ファイルなしで使う SPD ビュー（パネル）。globalStorage/spd-view.json に自動保管、保存は「名前を付けて」
 src/webview.ts            editor.html を Webview 用に組み立てる（CSP・<base>・nonce・bridge.js・テーマ CSS を差し込む）
 media/editor.html         元の SPD エディタ（spd-editor.html）の複製。sync-web.ps1 で上書きする。直接編集しない
-media/*-patterns.js       スケルトン。元の 1-python・2-java・3-C から sync-web.ps1 で複製する。直接編集しない
+media/patterns/*-patterns.js  スケルトン。元の patterns/ から sync-web.ps1 で複製する。直接編集しない
 media/bridge.js           拡張機能専用。Eclipse の Java 側（SpdBrowser.java）に当たる関数を postMessage で用意する
 media/vscode-theme.css    拡張機能専用。editor.html の色を VS Code のテーマ変数で上書きする
 media/fonts/              PlemolJP HS（Eclipse 版の web/fonts/ と同じもの）

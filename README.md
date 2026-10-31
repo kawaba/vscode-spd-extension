@@ -121,7 +121,7 @@ npm run compile
 
 - F5（「拡張機能を実行」）で拡張機能開発ホストが起動します。
 - `.vsix` の作成：`npm run package`
-- 画面（`media/editor.html` とスケルトン `media/*-patterns.js`）は元の SPD エディタの複製です。直接編集せず、元を直してから
+- 画面（`media/editor.html` とスケルトン `media/patterns/*-patterns.js`）は元の SPD エディタの複製です。直接編集せず、元を直してから
   `powershell -ExecutionPolicy Bypass -File .\sync-web.ps1` で複製します（拡張機能の版も SPD エディタの版にそろいます）。
 - 拡張機能の側だけを直して出し直すときは、版の Z を上げます（1.22.0 → 1.22.1）。そのため SPD エディタの版とずれることがあります。
 - 公開は、版と同じタグ（`v1.22.1` など）を push すると GitHub Actions（`.github/workflows/publish.yml`）が Marketplace に出します。
