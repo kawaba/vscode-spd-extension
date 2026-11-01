@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPD Editor for VS Code</title>
+<style>
+:root {
+  --accent: #2b6cb0;
+  --accent-light: #ebf4ff;
+  --border: #dde3ea;
+  --code-bg: #f3f5f8;
+}
+html {
+  background: #eef1f5;
+}
+body {
+  color: black;
+  font-size: 11pt;
+  line-height: 1.7em;
+  max-width: 880px;
+  margin: 24pt auto;
+  padding: 10pt 40pt 30pt;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10);
+  font-family: "BIZ UDPゴシック", "BIZ UDPGothic", "Meiryo", sans-serif;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: "游ゴシック体", "Yu Gothic", "YuGothic", sans-serif;
+  font-weight: bold;
+  line-height: 1.4em;
+  color: #1a365d;
+}
+h1 {
+  font-size: 22pt;
+  margin: 24pt -40pt 16pt;
+  padding: 14pt 40pt;
+  color: #fff;
+  background: linear-gradient(135deg, #2b6cb0, #2c5282);
+  border-radius: 8px 8px 0 0;
+}
+h2 {
+  font-size: 16pt;
+  margin-top: 32pt;
+  padding: 4pt 0 4pt 10pt;
+  border-left: 6px solid var(--accent);
+  background: linear-gradient(90deg, var(--accent-light), #fff);
+}
+h3 {
+  font-size: 13pt;
+  margin-top: 22pt;
+  padding-bottom: 2pt;
+  border-bottom: 2px solid var(--border);
+}
+ul, ol { padding-left: 24pt; }
+li { margin: 4pt 0; }
+li::marker { color: var(--accent); }
+strong { color: #1a365d; }
+code, pre {
+  font-family: "BIZ UDゴシック", "BIZ UDGothic", "MS Gothic", monospace;
+}
+code {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4pt;
+  font-size: 10pt;
+}
+pre {
+  background: #1e2a38;
+  color: #e8eef5;
+  border-radius: 6px;
+  padding: 10pt 14pt;
+  font-size: 10pt;
+  line-height: 1.5em;
+  overflow-x: auto;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+table {
+  border-collapse: collapse;
+  margin: 12pt 0;
+  width: 100%;
+  font-size: 10.5pt;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 6pt 12pt;
+  text-align: left;
+}
+th { background: var(--accent); color: #fff; }
+tbody tr:nth-child(even) { background: #f7f9fc; }
+img {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+a { color: var(--accent); }
+a:hover { text-decoration: none; background: var(--accent-light); }
+@media (max-width: 700px) {
+  body { margin: 0; padding: 6pt 16pt 24pt; border-radius: 0; }
+  h1 { margin: 0 -16pt 14pt; padding: 12pt 16pt; border-radius: 0; font-size: 18pt; }
+}
+</style>
+</head>
+<body>
+
+<h1>SPD Editor for VS Code</h1>
+
+<p>SPD（構造化プログラム設計図）を方眼の画面で描いて編集する VS Code 拡張機能です。<br>
+HTML/JavaScript 製の SPD エディタ（<a href="https://github.com/kawaba/spd-editor">kawaba/spd-editor</a>）を
+VS Code の中で使えるようにしたもので、Eclipse 版（<a href="https://github.com/kawaba/eclipse-spd-plugin">kawaba/eclipse-spd-plugin</a>）と同じ機能です。</p>
+
+<h2>使い方</h2>
+
+<h3>1. SPD エディタを開く</h3>
+
+<p><code>.py</code> のファイル（C なら <code>.c</code>）を開いているときに、次のどちらかで開きます。</p>
+
+<ul>
+<li>タブの右上に出る <strong>SPD のアイコン</strong>（青い木構造の図）を押す</li>
+<li>ショートカットキー <strong>Ctrl+Alt+D</strong>（mac は Cmd+Alt+D）</li>
+</ul>
+
+<p>SPD エディタは画面下のパネル（「ターミナル」「問題」と同じ場所）に開きます。この開き方には次の特徴があります。</p>
+
+<ul>
+<li><strong>上にソースコード、下に SPD</strong> を並べて見ながら作業できます</li>
+<li><strong>ファイルを作る必要はありません</strong>。描いた内容は自動で保管され、VS Code を閉じても次に開いたときに前回の続きから使えます</li>
+<li>保管される SPD は1つだけです。別の SPD を描くと前の内容は上書きされるので、残したいものはソースコードに貼り付けておきます</li>
+</ul>
+
+<p>パネルの高さは境目をドラッグして変えられます。パネル右上の「パネルを最大化」で広げることもできます。<br>
+コマンド「SPD: SPDエディタを開く」や「表示 → ビューを開く…」→「SPD エディタ」でも開けます。</p>
+
+<p><img src="images/spd-editor-1.png" alt=""></p>
+
+<h3>2. SPD をソースコードに貼り付ける（主な使い方）</h3>
+
+<ol>
+<li>SPD エディタで SPD を描く</li>
+<li><strong>Export</strong> を押す。SPD がコメントで囲まれた形（Python は <code>"""</code>、C は <code>/* */</code>）でクリップボードにコピーされる</li>
+<li><code>.py</code> のファイルの先頭など、貼り付けたい場所で <strong>Ctrl+V</strong></li>
+</ol>
+
+<p>あとで SPD を直したいときは、次のようにします。</p>
+
+<ol>
+<li>ソースコード中の SPD（コメント記号を含めてもよい）をコピーする</li>
+<li>SPD エディタの <strong>Import</strong> を押す。SPD エディタに読み込まれる</li>
+<li>直してからもう一度 <strong>Export</strong> し、ソースコードの SPD と貼り替える</li>
+</ol>
+
+<p>画面の操作方法は、SPD エディタ右上の 📖（解説）・💡（記述パターン）を参照してください。</p>
+
+<h3>3. <code>.spd</code> ファイルとして残す（必要なときだけ）</h3>
+
+<p>SPD をソースコードとは別のファイルとして残したい・提出したいときに使います。普段は 2. の使い方で十分です。</p>
+
+<ul>
+<li><strong>パネルの SPD エディタから保存する</strong>：「保存…」ボタン（Ctrl+S）で名前を付けて <code>.spd</code> に保存します。<br>
+初めに表示される名前は、開いているソースコードと同じ名前（例：<code>hello.py</code> なら <code>hello.spd</code>）です</li>
+<li><strong>新しく作る</strong>：「ファイル → 新しいファイル…」→「SPD ファイル」で言語（Python / C）と保存先を選びます。<br>
+エクスプローラーでフォルダーを右クリック →「新規SPDファイルを作成」でも作れます</li>
+<li><strong>開く</strong>：エクスプローラーで <code>.spd</code> ファイルを開くと、タブに SPD エディタの画面が開きます。<br>
+保存（Ctrl+S）・未保存マーク（タブの ●）・閉じるときの保存確認は、普通のファイルと同じです</li>
+</ul>
+
+<p><img src="images/spd-editor-2.png" alt=""></p>
+
+<h3>フォント</h3>
+
+<p>SPD の罫線を全角幅で表示するフォント PlemolJP HS を同梱しています。SPD エディタの画面ではインストールしなくても使われます。<br>
+Export した SPD がソースコードのエディタでずれるときは、コマンド「SPD: フォントのフォルダを開く」で開くフォルダの <code>README.txt</code> を見てください。</p>
+
+<h2>インストール</h2>
+
+<h3>Marketplace から</h3>
+
+<ol>
+<li>VS Code の拡張機能ビュー（Ctrl+Shift+X）で「<strong>SPD Editor</strong>」を検索する</li>
+<li>発行者が <strong>T.Kawaba</strong> の「SPD Editor」を選んで「インストール」を押す</li>
+</ol>
+
+<p>コマンドでインストールすることもできます。</p>
+
+<pre><code>code --install-extension kawaba.spd-editor</code></pre>
+
+<p>インストールしたあとは、新しい版が出ると自動で更新されます。</p>
+
+<h3><code>.vsix</code> ファイルから（授業で配布する場合）</h3>
+
+<ol>
+<li>配布された <code>spd-editor-X.Y.Z.vsix</code> を用意する</li>
+<li>VS Code の拡張機能ビュー（Ctrl+Shift+X）右上の「…」→「VSIX からのインストール…」で選ぶ</li>
+</ol>
+
+<p>コマンドでインストールすることもできます（ポータブル版の自動セットアップなど）。</p>
+
+<pre><code>code --install-extension spd-editor-X.Y.Z.vsix</code></pre>
+
+<h2>設定</h2>
+
+<table>
+<thead>
+<tr><th>設定</th><th>既定値</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>spd.defaultLanguage</code></td><td><code>python</code></td><td>空のファイル・SPD ビューを開いたときの言語（<code>python</code> / <code>c</code>）</td></tr>
+</tbody>
+</table>
+
+<p>言語のラジオボタンは Python と C だけです。Eclipse 版などで Java 系の言語で保存した <code>.spd</code> を開いたときは、
+その言語のラジオボタンも表示されます（知らないうちに別の言語へ変わらないようにするため）。</p>
+
+<p>設定を変えたあとに開いた画面から反映されます。</p>
+
+<h2><code>.spd</code> ファイルの形式</h2>
+
+<p>SPD エディタの「保存」と同じ JSON（UTF-8）です。Eclipse 版・ブラウザ版と相互に読み書きできます。</p>
+
+<pre><code>{
+  "lang": "python",
+  "data": {
+    "3,1": "│",
+    "3,2": "aa"
+  }
+}</code></pre>
+
+<ul>
+<li><code>lang</code>：<code>python</code> / <code>c</code>（Eclipse 版で作ったファイルでは <code>java</code>（JavaSE）/ <code>spring</code> / <code>thymeleaf</code> もある）</li>
+<li><code>data</code>：キーは <code>"x,y"</code>（0 起点の列,行）、値はそのマスの文字。空マスは持たない</li>
+</ul>
+
+<p>テキストとして見たいときは、タブを右クリック →「エディターを開き直す…」→「テキスト エディター」で開けます。</p>
+
+<h2>開発</h2>
+
+<pre><code>npm install
+npm run compile</code></pre>
+
+<ul>
+<li>F5（「拡張機能を実行」）で拡張機能開発ホストが起動します。</li>
+<li><code>.vsix</code> の作成：<code>npm run package</code></li>
+<li>画面（<code>media/editor.html</code> とスケルトン <code>media/patterns/*-patterns.js</code>）は元の SPD エディタの複製です。直接編集せず、元を直してから
+<code>powershell -ExecutionPolicy Bypass -File .\sync-web.ps1</code> で複製します（拡張機能の版も SPD エディタの版にそろいます）。</li>
+<li>拡張機能の側だけを直して出し直すときは、版の Z を上げます（1.22.0 → 1.22.1）。そのため SPD エディタの版とずれることがあります。</li>
+<li>公開は、版と同じタグ（<code>v1.22.1</code> など）を push すると GitHub Actions（<code>.github/workflows/publish.yml</code>）が Marketplace に出します。</li>
+</ul>
+
+<h2>ライセンス</h2>
+
+<ul>
+<li>拡張機能：EPL-2.0（<code>LICENSE</code>）</li>
+<li>同梱フォント PlemolJP HS：SIL Open Font License 1.1（<code>media/fonts/LICENSE-PlemolJP.txt</code>）</li>
+</ul>
+
+</body>
+</html>
