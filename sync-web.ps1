@@ -6,6 +6,7 @@
   （拡張機能だけ直して版を上げたあとで、SPD エディタの版の方が古いときはそのままにする）。
 
     元の spd-editor.html                → media/editor.html
+    元の spd-core.js                    → media/spd-core.js（共通の処理。v1.25.0〜。無いと画面が止まる）
     元の patterns/javase-patterns.js    → media/patterns/javase-patterns.js
     元の patterns/spring-patterns.js    → media/patterns/spring-patterns.js
     元の patterns/thymeleaf-patterns.js → media/patterns/thymeleaf-patterns.js
@@ -29,6 +30,7 @@ $media = Join-Path $PSScriptRoot "media"
 
 $files = @(
     @{ From = "spd-editor.html";              To = "editor.html" },
+    @{ From = "spd-core.js";                  To = "spd-core.js" },
     @{ From = "patterns\javase-patterns.js";    To = "patterns\javase-patterns.js" },
     @{ From = "patterns\spring-patterns.js";    To = "patterns\spring-patterns.js" },
     @{ From = "patterns\thymeleaf-patterns.js"; To = "patterns\thymeleaf-patterns.js" },

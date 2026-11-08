@@ -123,7 +123,7 @@
       <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
       <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
     </div>
-    <h1>SPD Editor<span class="ver">ver. 1.24.0</span></h1>
+    <h1>SPD Editor<span class="ver">ver. 1.25.0</span></h1>
   </div>
 </div>
 
@@ -151,7 +151,16 @@
      スケルトン定義（patterns/xxx-patterns.js）は言語を切り替えたときに読み込む（PATTERN_FILES・v1.22.0）。 -->
 <script src="spd-config.js"></script>
 
+<!-- 共通の処理（v1.25.0）。記号・スタンプの一覧、│ の自動補完の判定、SPD テキストの解析、
+     最低限の入力量の数え方など、エディタと先生用の集計画面（spd-log-viewer.html）が共に使うもの。
+     spd-editor.html と同じフォルダに置く（無いとエディタは動かない） -->
+<script src="spd-core.js"></script>
+
 <script>
+if (typeof SPD_CORE_VERSION === "undefined"){
+  alert("spd-core.js を読み込めませんでした。spd-editor.html と同じフォルダに spd-core.js を置いてください");
+  throw new Error("spd-core.js not loaded");
+}
 /* ===== 実行環境 =====
    Eclipse プラグイン（kawaba/eclipse-spd-plugin の SpdBrowser.java）から開かれたか。Java 側は URL に ?host=eclipse を付ける。
    念のため Java の BrowserFunction が登録済みかどうかでも判定する。 */
@@ -162,113 +171,16 @@ const IN_ECLIPSE = /[?&]host=eclipse(&|$)/.test(location.search)
 const ECLIPSE_MODE = (location.search.match(/[?&]mode=(\w+)/) || [])[1] || "editor";
 
 /* ===== 設定 ===== */
-const COLS = 90, ROWS = 500, CELLW = 18, CELLH = 22, FONT = 16, RNUMW = 34;
+/* グリッドの大きさ COLS・ROWS は spd-core.js にある */
+const CELLW = 18, CELLH = 22, FONT = 16, RNUMW = 34;
 
 /* ===== データ ===== */
 const data = {};
-const key = (x, y) => x + "," + y;
-const isHalf = ch => !!ch && ch.charCodeAt(0) <= 0x7f;
-const isQuote = ch => ch === '"' || ch === "'";
-/* パディングの印（TX-21・v1.24.0）。半角が奇数個続く並びに入れる詰め物を、利用者が打った半角空白と
-   区別してマスに保存する。isHalf() が真になる ASCII の制御文字を使い、表示では空白として描く。
-   Export・テキストランの取り出しでは、モードに関係なく取り除く（EI-15） */
-const PAD = "\u001F";
-const unpad = s => s.split(PAD).join("");
-const isBlankCell = v => !v || /^[\s　\u001F]+$/.test(v);   // 空マス・空白（とパディング）だけのマス
 
-/* ===== タブ展開 =====
-   タブ(U+0009)は isHalf() が真になるため、そのままだと「普通の半角文字」として
-   隣の文字と 1 マスにペアリングされてしまう（cell は white-space:pre / overflow:hidden
-   なのでタブが幅を食い、相方の文字が欄外へ押し出されて見えなくなる）。
-   Eclipse など外部エディタから貼り付けたタブインデントを正しく扱うため、
-   取り込み口（Import・文字入力欄）でタブ幅 TABSIZE の半角空白へ展開しておく。
-   タブ位置は文字列（＝行）の先頭から数える（Eclipse と同じ数え方）。 */
-const TABSIZE = 4;
-function expandTabs(s){
-  if (s.indexOf("\t") < 0) return s;
-  let out = "", col = 0;
-  for (const ch of s){
-    if (ch === "\t"){
-      const n = TABSIZE - (col % TABSIZE);
-      out += " ".repeat(n); col += n;
-    } else if (ch === "\n"){
-      out += ch; col = 0;
-    } else {
-      out += ch; col++;
-    }
-  }
-  return out;
-}
-
-/* ↻（for/while ループ記号）・▽（stream 処理記号）も下方向アンカー
-   ＝記号の直下から │ を伸ばしてブロックを作る */
-const LINE_DOWN = new Set(["┌","┐","├","┤","┬","┼","│","◇","〇","↻","▽"]);
-const LINE_UP   = new Set(["└","┘","├","┤","┴","┼","│","◇","〇"]);
-/* 上方向へ親ノードへ接続する罫線だけの集合。
-   ◇（分岐/switch/match）・〇（try/catch）は「ブロックの開始記号」で下方向へ
-   伸ばすだけなので上へは接続しない。上にあるテキストは親ではなく兄弟ノードの
-   内容なので、そこへ │ を誤補完しないよう LINE_UP から ◇・〇 を除外する。 */
-const LINE_UP_CONNECT = new Set(["└","┘","├","┤","┴","┼","│"]);
 const autoSet = {};
-/* テキストランの境界となる罫線・制御記号セット */
-const SPD_BORDER = new Set(["│","├","└","┌","┐","┘","┤","┼","─","◇","〇","↻","←","→","⇒","┬","┴","▽"]);
 
-/* ===== ツール定義 ===== */
-/* 罫線（─）の直後には空白を置かない方針のため、シンボルも ─ とラベルを詰めて定義する
-   （ボタン表示・スタンプ出力ともにこの文字列を使う） */
-const JAVA_SYMBOLS = [
-  "◇─","└─else","↻─for:","↻─while:",
-  "break","continue","◇─switch:","├─case","└─default","〇─try:","〇─catch:",
-  /* Java 専用：λ():＝ラムダ式、▽─stream:＝ストリーム処理（v1.11.0） */
-  "λ():","▽─stream:"
-];
-const PYTHON_SYMBOLS = [
-  "◇─","└─else","↻─for:","↻─while:",
-  "break","continue","◇─match:","├─case","└─default","〇─try:","〇─except:"
-];
-/* C 用シンボル。Java 用から 〇─try: / 〇─catch:（例外処理）を除いたもの */
-const C_SYMBOLS = [
-  "◇─","└─else","↻─for:","↻─while:",
-  "break","continue","◇─switch:","├─case","└─default"
-];
-/* Thymeleaf 用シンボル（v1.21.0）。画面の部品を ［］ で示すラベル。罫線は付けない */
-const THYMELEAF_SYMBOLS = [
-  "［見出し］","［小見出し］","［文字］","［段落］","［フォーム］","［リンク］",
-  "［表（行）］","［表（列）］","［画像］"
-];
-const THYMELEAF_TITLES = {
-  "［見出し］":   "見出し（h1・h2 など、ページの表題）",
-  "［小見出し］": "小見出し（h3〜h6 など、区画の表題）",
-  "［文字］":     "文字（span など、文中の短い文字列や値の表示）",
-  "［段落］":     "段落（p。ひとまとまりの文章）",
-  "［フォーム］": "フォーム（form。入力内容を送信する。送信先は → で示す）",
-  "［リンク］":   "リンク（a。別のページへ移動する。移動先は → で示す）",
-  "［表（行）］": "表（行）（1行に1項目を並べる表。ラベルと値の組を縦に並べる）",
-  "［表（列）］": "表（列）（1列に1項目を並べる一覧表。データの件数だけ行を繰り返す）",
-  "［画像］":     "画像（img）"
-};
-/* 括弧記号（Thymeleaf・v1.21.0）。配置後のカーソルは括弧の中央に置く（追記しやすいように） */
-const BRACKET_SYMBOLS = ["＜＞","{}","<<>>"];
-const BRACKET_TITLES = {
-  "＜＞":  "＜＞（部品の種類。例：送信＜submit＞）",
-  "{}":   "{}（変数・式。例：{変数}）",
-  "<<>>": "<<>>（画像サイズ・CSS の指定）"
-};
-/* 罫線記号グループ（2段目の左側に配置）。Java / C は ┬・┴ を右端に追加 */
-const LINE_SYMBOLS = ["│","─","└─","├─","┬─"];
-const LINE_SYMBOLS_JAVA = ["│","─","└─","├─","┬─","┬","┴"];
-/* 矢印記号グループ（2段目、罫線グループの右に配置）。
-   Java は 送る →・入力 ⇒ と 継承 ─⊳・実装 ---⊳ を含む。C は 代入 ← のみ（継承・実装は除外） */
-const ARROW_SYMBOLS_JAVA   = ["←","→","⇒","─⊳","---⊳"];
-const ARROW_SYMBOLS_PYTHON = ["←","->"];
-const ARROW_SYMBOLS_C      = ["←"];
-/* Thymeleaf は罫線グループと区切らずに → と括弧記号を続ける（v1.21.0） */
-const ARROW_SYMBOLS_THYMELEAF = ["→", ...BRACKET_SYMBOLS];
-/* 言語モード（ラジオの並び順）。java は JavaSE（保存済みのファイルと合わせるため値は "java" のまま・v1.22.0） */
-const LANGS = ["java", "spring", "thymeleaf", "python", "c"];
-const LANG_NAMES = { java: "JavaSE", spring: "Spring", thymeleaf: "Thymeleaf", python: "Python", c: "C" };
-/* Spring は JavaSE と同じツールバー・Export・Import（v1.22.0） */
-const isJavaLang = lang => lang === "java" || lang === "spring";
+/* ===== ツール定義 =====
+   記号・スタンプの一覧（JAVA_SYMBOLS など）と言語の一覧（LANGS）は spd-core.js にある */
 let currentLang = "python";
 
 /* ラジオに出す言語（SPD_CONFIG.langs・v1.22.0）。指定が無ければ全言語。
@@ -396,10 +308,7 @@ function updateToolFlow(){
 new ResizeObserver(() => updateToolFlow()).observe(document.querySelector(".toolbar"));
 
 function renderToolbox(){
-  const symbols = currentLang === "python"    ? PYTHON_SYMBOLS
-               : currentLang === "c"         ? C_SYMBOLS
-               : currentLang === "thymeleaf" ? THYMELEAF_SYMBOLS
-               : JAVA_SYMBOLS;
+  const { symbols, lines: lineSymbols, arrows: arrowSymbols } = toolSymbols(currentLang);
   toolbox.innerHTML = "";
   function makeBtn(id){
     if (id === "|"){
@@ -443,11 +352,6 @@ function renderToolbox(){
     b.onclick = (e) => applyTool(id, e);
     return b;
   }
-  const lineSymbols = (currentLang === "python" || currentLang === "thymeleaf") ? LINE_SYMBOLS : LINE_SYMBOLS_JAVA;
-  const arrowSymbols = currentLang === "python"    ? ARROW_SYMBOLS_PYTHON
-                     : currentLang === "c"         ? ARROW_SYMBOLS_C
-                     : currentLang === "thymeleaf" ? ARROW_SYMBOLS_THYMELEAF
-                     : ARROW_SYMBOLS_JAVA;
   // Thymeleaf は罫線と矢印・括弧記号の間に縦線を入れない（v1.21.0）
   const lineArrow = currentLang === "thymeleaf" ? [...lineSymbols, ...arrowSymbols]
                                                 : [...lineSymbols, "|", ...arrowSymbols];
@@ -496,7 +400,7 @@ function renderToolbox(){
     const radio = document.createElement("input");
     radio.type = "radio"; radio.name = "lang"; radio.value = lang;
     radio.checked = (currentLang === lang);
-    radio.onchange = () => { currentLang = lang; current = "│"; renderToolbox(); updateInfo(); };
+    radio.onchange = () => { logOp("lang", { from: currentLang, to: lang }); currentLang = lang; current = "│"; renderToolbox(); updateInfo(); };
     label.appendChild(radio);
     const labelText = LANG_NAMES[lang];
     label.appendChild(document.createTextNode(labelText));
@@ -560,6 +464,7 @@ function applyTool(id, e){
     saveHistory();
     data[key(x, y)] = id;
     refreshColumn(x);
+    logOp("sym", { s: id, x, y });
     /* │ は連続描画しやすいよう1つ下へ。─ は1つ右へ進めて文字入力モードへ
        （ラベルを続けて打てる。ESCで入力破棄＝既存のテキストモードESC処理） */
     if (id === "│"){
@@ -570,6 +475,7 @@ function applyTool(id, e){
       textRunInfo = null;
       renderToolbox();
       const capEl = document.getElementById("cap");
+      discardCap();
       capEl.value = "";
       capEl.focus();
     }
@@ -578,6 +484,7 @@ function applyTool(id, e){
     saveHistory();
     caret.slot = 0;
     flush(id);
+    logOp("sym", { s: id, x, y });
     /* 括弧記号は中身を追記しやすいよう、カーソルを括弧の中央へ置く（v1.21.0）。
        前半の文字幅を半角単位で数え、マスとスロットに直す（全角＝2、半角＝1） */
     if (BRACKET_SYMBOLS.includes(id)){
@@ -600,6 +507,8 @@ function insertIntoCap(str){
   const el = document.getElementById("cap");
   const s = (el.selectionStart == null) ? el.value.length : el.selectionStart;
   const t = (el.selectionEnd   == null) ? el.value.length : el.selectionEnd;
+  capIn.btn++;                                   // 作業ログ：Shift+ボタンの回数（LG-05）
+  capIn.del += [...el.value.slice(s, t)].length; // 選択して置き換えた分
   el.value = el.value.slice(0, s) + str + el.value.slice(t);
   // 括弧記号はカーソルを括弧の中央へ（v1.21.0）
   const pos = s + (BRACKET_SYMBOLS.includes(str) ? str.length / 2 : str.length);
@@ -684,66 +593,11 @@ function paintCell(x, y){
   }
 }
 
-/* ===== │ 自動補完 ===== */
-/* 指定マスがテキスト（罫線・SPD記号でない実内容）かどうかを判定する。
-   自動補完の │ がテキストを横断して引かれるのを防ぐために使う。
-   空白だけのマス・罫線・SPD記号（SPD_BORDER）はテキストとみなさない。 */
-function isTextCell(x, y){
-  const v = data[key(x, y)];
-  if (v === undefined) return false;
-  if (/^[\s　]+$/.test(v)) return false;          // 空白だけのマスは無視
-  if (v.length === 1 && SPD_BORDER.has(v)) return false; // 罫線・SPD記号はテキストでない
-  return true;                                    // それ以外（全角/半角テキスト）はテキスト
-}
-function colFill(x){
-  const anchors = [];
-  for (let y = 0; y < ROWS; y++){
-    const v = data[key(x, y)];
-    if (!v || v.length !== 1) continue;
-    if (!LINE_DOWN.has(v) && !LINE_UP.has(v)) continue;
-    // ◇（switch/match を含む）も ↻ と同様、記号の直下から │ を伸ばす方針のため
-    // 通常アンカーとして扱う（旧 switch/match 除外は撤廃）
-    anchors.push(y);
-  }
-  const fill = [];
-  for (let i = 0; i < anchors.length - 1; i++){
-    const ya = anchors[i], yb = anchors[i+1];
-    const va = data[key(x, ya)], vb = data[key(x, yb)];
-    if (!LINE_DOWN.has(va) || !LINE_UP.has(vb)) continue;
-    // ◇ と 〇 は異なる種類なので相互に補完しない
-    if ((va === "◇" && vb === "〇") || (va === "〇" && vb === "◇")) continue;
-    // 下側アンカーが ─◇ / ─〇（左隣に ─ を持つ分岐/例外の開始記号）の場合、
-    // それは左の親スパインにぶら下がる独立したブロック（単独の if 文など）であり、
-    // 上の ◇/〇 の else-if 的な継続ではない。よって縦連結しない。
-    // （else-if は下側が ◇─＝左隣に ─ を持たず ◇ が直接スパイン位置に来るので従来どおり補完する）
-    if ((vb === "◇" || vb === "〇") && data[key(x - 1, yb)] === "─") continue;
-    // アンカー間の「補完する列」にテキストがあれば、テキストを横断する補完はしない
-    // （スパイン列が空＝テキストが右に寄っている入れ子構造の行は従来どおり補完する）
-    let crossesText = false;
-    for (let y = ya + 1; y < yb; y++){
-      if (isTextCell(x, y)){ crossesText = true; break; }
-    }
-    if (crossesText) continue;
-    for (let y = ya+1; y < yb; y++) fill.push(y);
-  }
-  // 上方向アンカー（└ ┘ ├ ┤ ┴ ┼ │）は、真上のテキスト（＝親ノード）まで
-  // 空きマスを │ でつなぐ。行挿入などで親と子の間に空きができても接続を保つため。
-  // 直上の内容がテキストの場合だけ接続し、テキストを横断はしない（空きマスのみ補完）。
-  // ◇・〇 は分岐/例外の開始記号で、上の兄弟テキストへ誤接続しないよう対象外。
-  for (let y = 0; y < ROWS; y++){
-    if (!LINE_UP_CONNECT.has(data[key(x, y)])) continue;
-    let ya = y - 1;
-    while (ya >= 0 && data[key(x, ya)] === undefined) ya--;
-    if (ya < 0) continue;            // 上に内容がない
-    if (ya === y - 1) continue;      // 隙間なし（直上に内容あり）
-    if (!isTextCell(x, ya)) continue;// 直上の内容がテキストのときだけ接続（親ノード）
-    for (let yy = ya + 1; yy < y; yy++) fill.push(yy);
-  }
-  return fill;
-}
+/* ===== │ 自動補完 =====
+   どのマスを補完するか（colFill）は spd-core.js にある。ここでは autoSet に反映して描く */
 function refreshColumn(x){
   for (let y = 0; y < ROWS; y++) delete autoSet[key(x, y)];
-  for (const y of colFill(x)) autoSet[key(x, y)] = true;
+  for (const y of colFill(x, data)) autoSet[key(x, y)] = true;
   for (let y = 0; y < ROWS; y++) paintCell(x, y);
 }
 function refreshAll(){
@@ -785,28 +639,8 @@ function flush(text){
 }
 
 /* ===== 半角ランのパディング位置（TX-21・v1.17.0） =====
-   半角は2文字で1マスに詰めるため、半角が奇数個続く並び（半角ラン）には
-   半角空白1個のパディングが必ず入る。その位置を前後のマスで決める：
-     ・前後の一方だけが空き側（空マス・空白・罫線記号・行端）なら、空き側に置く。
-       全角文字に接する側には置かない（.青 → " .青"／"あいう" → ' "あいう"'。
-       クラス名や文字列の中に空白を入れない）
-     ・前後とも空き → 末尾（従来どおりの左詰め）
-     ・前後とも全角文字 → 末尾。ただし先頭が右側の語に付く記号（HEAD_PAD_CHARS）か開始引用符なら先頭
-     ・引用符1文字だけのランは従来どおり奇偶判定（TX-11：開始=先頭、終了=末尾）
-   文字入力（flush）・テキストラン編集（applyTextRunEdit）・Import（parseSPDText）が
-   同じ判定を使い、テキストランの取り出し（extractTextRun）はその逆でパディングを除く。 */
-const isOpenSide = v => isBlankCell(v) || SPD_BORDER.has(v);
-/* 右側の語に付く記号（TX-21・v1.17.1）。前後とも全角文字に挟まれた半角ランがこれで始まるときは、
-   パディングを先頭に置いて記号を右の語に付ける（例：［.青色］ → ［ .青色］。CSS のクラス名） */
-const HEAD_PAD_CHARS = new Set([".", "{", "$", "#", "~", "%", "!", "&", "(", "[", "<", "@"]);
-/* run：奇数長の半角ラン、leftV / rightV：前後のマス（文字）、opening：run[0] が開始引用符か。
-   true なら先頭（左）にパディングを置く */
-function padAtHead(run, leftV, rightV, opening){
-  if (run.length === 1 && isQuote(run)) return opening;
-  const lo = isOpenSide(leftV), ro = isOpenSide(rightV);
-  if (lo !== ro) return lo;
-  return !lo && (HEAD_PAD_CHARS.has(run[0]) || (isQuote(run[0]) && opening));
-}
+   パディングをどちらに置くかの判定（padAtHead）は spd-core.js にある。
+   文字入力（flush）・テキストラン編集（applyTextRunEdit）・Import（parseSPDText）が同じ判定を使う */
 /* 文字列をカーソル位置から書き込む（flush・applyTextRunEdit 共通）。
    put(ch, pad) は1文字の書き込み関数、rightOf(x, y) は入力末尾の右隣マスの内容を返す。
    半角ランの書き始め（slot0）で長さが奇数なら、padAtHead() に従い先頭へパディングを置く。 */
@@ -875,6 +709,7 @@ function moveSelection(destX, destY){
     if (tx >= COLS || ty >= ROWS) continue;
     if (v !== undefined) data[key(tx, ty)] = v;
   }
+  logOp("move", { r: [r.x1, r.y1, r.x2, r.y2], to: [destX, destY] });
   refreshAll();
   cancelSelection();
   current = "│";
@@ -898,6 +733,9 @@ function copyCells(){
       if (v !== undefined) cells.push({ dx, dy, v });
     }
   cellClipboard = { width, height, cells };
+  const cc = cells.map(c => ({ x: c.dx, y: c.dy, v: c.v }));
+  lastCopyHash = spdHash(cc);
+  logOp("copy", { r: [r.x1, r.y1, r.x2, r.y2], units: countCellsUnits(cc, currentLang), h: lastCopyHash });
   // コピー後は選択を解除し、貼り付け先を指定できる通常モードへ戻す
   cancelSelection();
   current = "│";
@@ -921,6 +759,9 @@ function pasteCells(){
     if (tx >= COLS || ty >= ROWS) continue;
     data[key(tx, ty)] = v;
   }
+  const cc = cells.map(c => ({ x: c.dx, y: c.dy, v: c.v }));
+  const h = spdHash(cc);
+  logOp("paste", { x: caret.x, y: caret.y, units: countCellsUnits(cc, currentLang), h, self: h === lastCopyHash });
   refreshAll();
   updateInfo();
 }
@@ -947,9 +788,12 @@ function deleteSelection(){
   const r = selRect();
   if (!r) return;
   saveHistory();
+  const rr = [r.x1, r.y1, r.x2, r.y2];
+  const units = countCellsUnits(dataToCells(data, rr), currentLang);
   for (let y = r.y1; y <= r.y2; y++)
     for (let x = r.x1; x <= r.x2; x++)
       delete data[key(x, y)];
+  logOp("selDel", { r: rr, units });
   cancelSelection();
   refreshAll();
   current = "│";
@@ -964,6 +808,7 @@ function insertCell(x, y){
     if (v !== undefined) data[key(cx + 1, y)] = v; else delete data[key(cx + 1, y)];
   }
   delete data[key(x, y)];
+  logOp("insCell", { x, y });
   refreshAll();
 }
 
@@ -979,6 +824,7 @@ function eraseAndShift(x, y){
   }
   delete data[key(rightMax, y)];
   for (let cx = x; cx <= rightMax; cx++) paintCell(cx, y);
+  logOp("erase", { x, y });
   refreshAll();
 }
 
@@ -988,6 +834,7 @@ function eraseInPlace(x, y){
   if (data[key(x, y)]){
     saveHistory();
     delete data[key(x, y)];
+    logOp("eraseIn", { x, y });
     paintCell(x, y);
     refreshAll();
   }
@@ -1005,6 +852,7 @@ function insertRow(y){
       else delete data[kd];
     }
   }
+  logOp("insRow", { y });
   refreshAll();
 }
 function deleteRow(y){
@@ -1017,6 +865,7 @@ function deleteRow(y){
       else delete data[kd];
     }
   }
+  logOp("delRow", { y });
   refreshAll();
 }
 
@@ -1269,11 +1118,13 @@ function undo(){
   if (undoStack.length === 0) return;
   redoStack.push(takeSnapshot());
   applySnapshot(undoStack.pop());
+  logOp("undo");
 }
 function redo(){
   if (redoStack.length === 0) return;
   undoStack.push(takeSnapshot());
   applySnapshot(redoStack.pop());
+  logOp("redo");
 }
 
 /* ===== テキスト生成（Export 用） =====
@@ -1360,6 +1211,11 @@ function doCopy(plain, props){
     : currentLang === "thymeleaf" ? "<!--/*\n" + body + "\n*/-->"
     : "/*\n" + body + "\n*/";
   navigator.clipboard.writeText(wrapped).catch(() => {});
+  const ec = parseSPDText(body).cells;           // 作業ログ：再 Import と照合する指紋（LG-07）
+  const eh = spdHash(ec);
+  exportHashes.add(eh);
+  logOp("export", { part: !!r, kind: plain ? "plain" : props ? "props" : "cmt",
+                    units: countCellsUnits(ec, currentLang), h: eh });
   if (r){
     // 部分Export後は選択を解除して通常モードへ戻す
     cancelSelection();
@@ -1374,63 +1230,6 @@ function doCopy(plain, props){
   }
 }
 
-/* ===== Import 用：SPD テキストをセル配列へ解析 =====
-   戻り値 { cells:[{x,y,v}], width, height }（x,y は左上(0,0)起点の相対位置） */
-function parseSPDText(text){
-  const lines = text.split(/\r?\n/);
-  const cells = [];
-  let width = 0;
-  const height = Math.min(lines.length, ROWS);
-  for (let y = 0; y < lines.length && y < ROWS; y++){
-    const line = expandTabs(lines[y]);   // タブインデントを半角空白へ（外部エディタからの貼り付け対策）
-    let x = 0, i = 0;
-    let dqCount = 0, sqCount = 0;  // 行ごとに " ' の出現回数をカウント
-    let inIndent = true;          // インデント領域判定（│ と半角空白で構成。半角空白2個＝空マス）
-    let prevHalf = false;         // 直前のセルが半角か（＝半角ランの途中か）
-    let leftV;                    // 直前のセルの内容（空セルは undefined。パディング位置の判定用・TX-21）
-    const countQuote = c => { if (c === '"') dqCount++; else if (c === "'") sqCount++; };
-    while (i < line.length && x < COLS){
-      const ch = line[i];
-      const next = line[i+1];
-      if (ch === "　"){           // 全角空白＝空セル
-        x++; i++; prevHalf = false; leftV = undefined;
-      } else if (inIndent && ch === " " && (next === " " || !isHalf(next))){
-        // インデントの半角空白：2個で1マス分の空セル（格納しない）。
-        // 奇数個の最後の1個の直後に半角文字が続くときは、先頭パディング（" ." など・TX-21）
-        // として半角ランの側で読む
-        x++; i += (next === " ") ? 2 : 1; prevHalf = false; leftV = undefined;
-      } else if (isHalf(ch)){         // ASCII → 半角2文字で1セル
-        inIndent = false;
-        // 半角ランの先頭で長さが奇数なら、パディングの位置を前後のセルで決める（TX-21）
-        let headPad = false;
-        if (!prevHalf){
-          let j = i;
-          while (j < line.length && isHalf(line[j])) j++;
-          if ((j - i) % 2 === 1){
-            const opening = isQuote(ch) && (ch === '"' ? dqCount : sqCount) % 2 === 0;
-            headPad = padAtHead(line.slice(i, j), leftV, line[j], opening);
-          }
-        }
-        let v;
-        if (headPad){
-          v = PAD + ch; countQuote(ch); i++;           // 先頭パディング
-        } else if (next !== undefined && isHalf(next)){
-          v = ch + next; countQuote(ch); countQuote(next); i += 2;   // ペア
-        } else {
-          v = ch + PAD; countQuote(ch); i++;           // 末尾パディング
-        }
-        cells.push({ x, y, v });
-        x++; prevHalf = true; leftV = v;
-      } else {                        // 全角文字＝1セル
-        if (ch !== "│") inIndent = false;  // │ はインデント継続、それ以外で終了
-        cells.push({ x, y, v: ch });
-        x++; i++; prevHalf = false; leftV = ch;
-      }
-      if (x > width) width = x;
-    }
-  }
-  return { cells, width, height };
-}
 
 /* ===== Import（クリップボードから読み込み） =====
    partial=true（Shift+Import）：カーソル位置を左上(0,0)として貼り付ける部分Import。
@@ -1443,27 +1242,30 @@ function parseSPDText(text){
 //     その2行（と外側の空行）を取り除く。言語モードに関係なく中身で判定し、行の前後の空白は無視する。
 // (2) 行頭の #（JavaSE・Spring モードのみ）：空行以外のすべての行が # で始まるときだけ、
 //     各行の先頭の "#" と直後の半角空白（最大2個）を取り除く（Alt+Export・EI-13 の逆）。
-// 戻り値 { text, stripped }（stripped=何か取り除いたか）
+// 戻り値 { text, stripped, mark }（stripped=何か取り除いたか、mark=取り除いた記号 "/*"・'"""'・"<!--/*"・"#"・null）
 const WRAP_MARKS = [["/*", "*/"], ['"""', '"""'], ["<!--/*", "*/-->"]];
 function stripCommentMarks(text){
   let lines = text.split(/\r?\n/);
-  let stripped = false;
+  let stripped = false, mark = null;
   const isBlank = s => s.trim() === "";
   let a = 0, b = lines.length - 1;
   while (a <= b && isBlank(lines[a])) a++;
   while (b >= a && isBlank(lines[b])) b--;
-  if (a < b && WRAP_MARKS.some(([o, c]) => lines[a].trim() === o && lines[b].trim() === c)){
+  const wm = a < b && WRAP_MARKS.find(([o, c]) => lines[a].trim() === o && lines[b].trim() === c);
+  if (wm){
     lines = lines.slice(a + 1, b);
     stripped = true;
+    mark = wm[0];
   }
   if (isJavaLang(currentLang)){
     const body = lines.filter(s => !isBlank(s));
     if (body.length > 0 && body.every(s => s.startsWith("#"))){
       lines = lines.map(s => s.replace(/^# {0,2}/, ""));
       stripped = true;
+      if (!mark) mark = "#";
     }
   }
-  return { text: lines.join("\n"), stripped };
+  return { text: lines.join("\n"), stripped, mark };
 }
 
 /* ブロック貼り付け：(ox,oy) を左上として width×height の矩形を一旦クリアし、cells を書き込む
@@ -1500,6 +1302,7 @@ function doPaste(partial){
     const sc = stripCommentMarks(text);   // 囲み記号・行頭の # を取り除く（EI-14）
     const { cells, width, height } = parseSPDText(sc.text);
     saveHistory();
+    const ix = partial ? caret.x : 0, iy = partial ? caret.y : 0;
     if (partial){
       pasteBlock(cells, width, height, caret.x, caret.y);   // ブロック貼り付け
     } else {
@@ -1512,6 +1315,9 @@ function doPaste(partial){
       }
       current = "│";
     }
+    const h = spdHash(cells), self = exportHashes.has(h);
+    logOp("import", Object.assign({ part: !!partial, x: ix, y: iy, lines: sc.text.split(/\r?\n/).length,
+      units: countCellsUnits(cells, currentLang), h, mark: sc.mark, self }, self ? {} : { body: logBody(cells) }));
     refreshAll();
     renderToolbox();
     updateInfo();
@@ -1625,6 +1431,7 @@ function insertSkeleton(i){
   const { cells, width, height } = parseSPDText(p.body);
   saveHistory();
   pasteBlock(cells, width, height, caret.x, caret.y);
+  logOp("skel", { name: p.title, units: countCellsUnits(cells, currentLang) });
   refreshAll();
   renderToolbox();
   updateInfo();
@@ -1659,17 +1466,18 @@ function pickerOpts(extra){
   return o;
 }
 function currentJSON(){
-  return JSON.stringify({ lang: currentLang, data: data }, null, 2);
+  return JSON.stringify({ lang: currentLang, data: data, log: workLog }, null, 2);
 }
 
 /* ===== 保存 =====（段3の「保存」ボタンから呼ぶ） */
 async function doSave(){
   if (IN_ECLIPSE){ requestEclipseSave(); return; }    // Eclipse 内では Eclipse の保存に任せる
-  const json = currentJSON();
   if (!useLegacyPicker && window.showSaveFilePicker){
     try {
       const handle = await window.showSaveFilePicker(
         pickerOpts({ suggestedName: currentFileName || "spd.json" }));
+      logSave(handle.name);                              // 保存先が決まってから記録し、ログごと書く
+      const json = currentJSON();
       const w = await handle.createWritable();
       await w.write(json);
       await w.close();
@@ -1683,6 +1491,8 @@ async function doSave(){
       useLegacyPicker = true;                            // 以後はフォールバック方式で
     }
   }
+  logSave(currentFileName || "spd.json");
+  const json = currentJSON();
   const blob = new Blob([json], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1692,7 +1502,7 @@ async function doSave(){
   markSaved();               // ダウンロード方式では保存先での成否が分からないので、保存済みとみなす
 }
 
-/* 読み込んだ JSON テキストを反映する。成功したら true。 */
+/* 読み込んだ JSON テキストを反映する。成功したら読み込んだオブジェクト（失敗したら false）。 */
 function applyLoadedJSON(text){
   try {
     const obj = JSON.parse(text);
@@ -1705,7 +1515,7 @@ function applyLoadedJSON(text){
     refreshAll();
     renderToolbox();
     updateInfo();
-    return true;
+    return obj;
   } catch(err){
     alert("ファイルの読み込みに失敗しました");
     return false;
@@ -1718,7 +1528,9 @@ async function doLoad(){
     try {
       const [handle] = await window.showOpenFilePicker(pickerOpts({ multiple: false }));
       const file = await handle.getFile();
-      if (applyLoadedJSON(await file.text())){
+      const obj = applyLoadedJSON(await file.text());
+      if (obj){
+        logOpen(obj, file.name);
         lastFileHandle = handle;                         // このファイルのフォルダを記憶
         currentFileName = file.name;
         updateFileName();
@@ -1740,7 +1552,9 @@ async function doLoad(){
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      if (applyLoadedJSON(ev.target.result)){
+      const obj = applyLoadedJSON(ev.target.result);
+      if (obj){
+        logOpen(obj, file.name);
         currentFileName = file.name;                     // フォルダは記憶できない（ブラウザ制約）
         updateFileName();
         markSaved();
@@ -1787,7 +1601,7 @@ function autosaveNow(force){
       if (ownsAutosave) localStorage.removeItem(AUTOSAVE_KEY);
     } else {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        lang: currentLang, data: data, fileName: currentFileName,
+        lang: currentLang, data: data, log: workLog, fileName: currentFileName,
         dirty: state !== savedState, savedAt: Date.now() }));
       ownsAutosave = true;
     }
@@ -1806,6 +1620,7 @@ function restoreAutosave(){
              + "復元しますか？\n\n"
              + "キャンセルすると空の状態で始めます（前回の内容は、編集を始めるまでは残ります）。")) return;
   if (!applyLoadedJSON(JSON.stringify(saved))) return;
+  startLog(saved.log, "autosave");                    // 作業ログも引き継ぐ（LG-02）
   currentFileName = saved.fileName || "";
   updateFileName();
   infoEl.textContent = "前回の作業内容を復元しました（まだファイルには保存されていません）";
@@ -1900,6 +1715,7 @@ document.addEventListener("mouseup", e => {
 
   /* 文字モード中：入力位置が変わるので編集途中の内容を破棄し、入力欄へフォーカス */
   if (current === "__text"){
+    discardCap();
     cap.value = "";
     textRunInfo = null;
     cap.focus();
@@ -1924,6 +1740,7 @@ grid.addEventListener("dblclick", e => {
     current = "__text";
     textRunInfo = null;
     renderToolbox();
+    discardCap();
     cap.value = "";
     cap.focus();
     updateInfo();
@@ -1937,7 +1754,9 @@ grid.addEventListener("dblclick", e => {
   setCaret(run.startX, y, 0);
   current = "__text";
   renderToolbox();
+  discardCap();
   cap.value = extractTextRun(run);
+  capBase = [...cap.value].length;     // 作業ログ：初めから入っている分（数えない・LG-05）
   cap.focus();
   cap.select();
   updateInfo();
@@ -1952,6 +1771,7 @@ cap.addEventListener("keydown", e => {
     e.preventDefault();
     // 文字入力中にドラッグ選択した場合：選択をクリアして文字入力モードへ復帰
     if (current === "__select"){ cancelSelectionRestore(); return; }
+    discardCap();
     cap.value = "";
     textRunInfo = null;
     current = "│";
@@ -1966,7 +1786,9 @@ cap.addEventListener("keydown", e => {
     if (textRunInfo){
       // テキストラン編集モード：空文字でも適用（=元テキストを削除して後続を詰める）
       saveHistory();
+      const run = textRunInfo;
       applyTextRunEdit(text, textRunInfo);
+      logText(run.startX, run.y, "run", text);
       textRunInfo = null;
       current = "│";
       renderToolbox();
@@ -1976,8 +1798,10 @@ cap.addEventListener("keydown", e => {
       ensureTextMode();
       saveHistory();
       // Enter＝カーソル位置に挿入、Shift+Enter＝カーソル位置から上書き（v1.21.0）
+      const tx = caret.x, ty = caret.y;
       if (e.shiftKey) flush(text);
       else            insertText(text);
+      logText(tx, ty, e.shiftKey ? "over" : "ins", text);
       current = "│";
       renderToolbox();
       updateInfo();
@@ -2022,7 +1846,7 @@ document.addEventListener("keydown", e => {
   }
   if (e.key === "Escape" && (current === "__inscell" || current === "__text" || current === "__erase")){
     e.preventDefault();
-    if (current === "__text"){ cap.value = ""; textRunInfo = null; cap.blur(); }
+    if (current === "__text"){ discardCap(); cap.value = ""; textRunInfo = null; cap.blur(); }
     current = "│"; renderToolbox(); updateInfo();
   }
 });
@@ -2035,7 +1859,9 @@ function ensureTextMode(){
 /* ===== クリア ===== */
 function clearAll(){
   saveHistory();
+  const before = Object.keys(data).length;
   for (const k in data) delete data[k];
+  logOp("clear", { before });
   cancelSelection();
   textRunInfo = null;
   forgetFileName();          // 中身が空になる＝開いたファイルとは別物なのでファイル名表示を消す
@@ -2077,7 +1903,11 @@ function setupEclipseBridge(){
 }
 let eclipseLastState = null;          // 最後に読み込んだ／保存用に渡した／通知した時点の内容
 
+/* 画面の「保存」・Ctrl+S（VS Code 拡張の bridge.js もこれを呼ぶ）。保存の記録（LG-08）はここで行う。
+   getSpdText() は編集のたびにも呼ばれる（VS Code の文書の更新・Eclipse のビューの保管）ので、そちらでは記録しない。
+   Eclipse・VS Code のメニューからの保存は、画面を通らないので記録されない */
 function requestEclipseSave(){
+  logSave(null);                      // IDE 側のファイル名は分からない
   if (typeof window.spdRequestSave === "function") window.spdRequestSave();
 }
 
@@ -2094,11 +1924,13 @@ function loadSpd(text){
   clearCaret();
   textRunInfo = null;
   current = "│";
+  let log = null, json = false;
   try {
     if (/^\s*\{/.test(src)){
       const obj = JSON.parse(src);
       if (obj.data) Object.assign(data, obj.data);
       if (obj.lang && LANGS.includes(obj.lang)) currentLang = obj.lang;
+      log = obj.log; json = true;
     } else if (src.trim()){
       const { cells } = parseSPDText(stripCommentMarks(src).text);
       for (const { x, y, v } of cells){
@@ -2108,6 +1940,9 @@ function loadSpd(text){
   } catch(err){
     alert("SPD ファイルの読み込みに失敗しました（JSON の形式が正しくありません）");
   }
+  startLog(log, "eclipse");                           // ファイルのログを引き継ぐ（無ければ新しく始める）
+  const lc = dataToCells(data);
+  logOp("eclipse", { json, units: countMinUnits(data, currentLang), h: spdHash(lc), body: logBody(lc) });
   refreshAll();
   renderToolbox();
   updateInfo();
@@ -2118,6 +1953,119 @@ function loadSpd(text){
 function getSpdText(){
   eclipseLastState = editState();     // 保存後の編集で再び変更通知が出るよう基準を更新する
   return currentJSON();
+}
+
+/* ===== 作業ログ（v1.25.0・LG-01〜10。設計は docs/作業ログの設計.md の 4 章） =====
+   SPD を答えさせる課題で、解答のどれだけが打たずに入ってきたかを先生が確かめられるよう、
+   内容を変える操作を 1 件ずつ記録し、保存ファイル・自動保存・Eclipse の .spd に { log } として入れる。
+   記録は変更の後に logOp(種類, 情報) で行う（saveHistory は変更前に呼ばれ、種類も分からないため）。
+   数える量（units）は spd-core.js の countCellsUnits()／countMinUnits()、指紋（h）は spdHash() */
+const LOG_VER = 1;
+const SNAP_OPS = 50;                  // この操作数ごとに snap
+const SNAP_MS  = 5 * 60 * 1000;       // 操作があればこの時間ごとに snap
+let workLog = null;                   // { ver, id, entries }
+let logT0 = 0;                        // 直近の start の時刻（t はここからの経過ミリ秒）
+let opsSinceSnap = 0, lastSnapAt = 0;
+const exportHashes = new Set();       // この作業中に Export した指紋（再 Import の self 判定）
+let lastCopyHash = null;              // 直前のセルのコピーの指紋（貼り付けの self 判定）
+
+function newLogId(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(v => v.toString(16).padStart(2, "0")).join("");
+  return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
+}
+/* 時刻を地方時の ISO 形式で（例 2026-11-10T09:02:11+09:00） */
+function isoLocal(d){
+  const p = n => String(n).padStart(2, "0");
+  const off = -d.getTimezoneOffset(), sg = off >= 0 ? "+" : "-", a = Math.abs(off);
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":"
+       + p(d.getMinutes()) + ":" + p(d.getSeconds()) + sg + p(Math.floor(a / 60)) + ":" + p(a % 60);
+}
+/* 外から持ち込んだ中身 body は [x, y, 値] の並びで残す（parseSPDText の cells を詰めたもの） */
+function logBody(cells){ return cells.map(c => [c.x, c.y, c.v]); }
+
+/* 作業を始める（LG-02）。log が正しい形ならそれを引き継ぎ、無ければ新しい名札（id）で作る。
+   from："new"＝起動時、"autosave"＝自動保存から復元、"eclipse"＝Eclipse から読み込み、"open"＝ログ付きのファイルを開いた */
+function startLog(log, from){
+  workLog = (log && typeof log.id === "string" && Array.isArray(log.entries))
+          ? { ver: LOG_VER, id: log.id, entries: log.entries }
+          : { ver: LOG_VER, id: newLogId(), entries: [] };
+  logT0 = lastSnapAt = Date.now();
+  opsSinceSnap = 0;
+  exportHashes.clear();
+  lastCopyHash = null;
+  logOp("start", { at: isoLocal(new Date()), ver: SPD_CORE_VERSION, lang: currentLang, from });
+}
+/* 1 件記録する。cells は操作後のマスの数 */
+function logOp(op, info){
+  if (!workLog) return;
+  workLog.entries.push(Object.assign({ n: workLog.entries.length, t: Date.now() - logT0, op },
+                                     info || {}, { cells: Object.keys(data).length }));
+  if (op === "start" || op === "snap") return;
+  if (op === "save"){ opsSinceSnap = 0; lastSnapAt = Date.now(); return; }
+  if (++opsSinceSnap >= SNAP_OPS) takeSnap();
+}
+function takeSnap(){
+  opsSinceSnap = 0; lastSnapAt = Date.now();
+  logOp("snap", { data: Object.assign({}, data) });
+}
+setInterval(() => {
+  if (workLog && opsSinceSnap > 0 && Date.now() - lastSnapAt >= SNAP_MS) takeSnap();
+}, 30 * 1000);
+function logSave(file){
+  logOp("save", { file, snap: Object.assign({}, data) });
+}
+/* ファイルを開いた（LG-03）。ログ付きならそのログを引き継いで続きを書く（設計 6.2）。
+   開いた内容は外から持ち込んだものとして units・h・body を残す（自分の続きかは集計画面で判定する） */
+function logOpen(obj, file){
+  const has = !!(obj.log && typeof obj.log.id === "string" && Array.isArray(obj.log.entries));
+  if (has) startLog(obj.log, "open");
+  const lc = dataToCells(data);
+  logOp("open", { file, units: countMinUnits(data, currentLang), hasLog: has, logId: has ? obj.log.id : null,
+                  h: spdHash(lc), body: logBody(lc) });
+}
+
+/* 入力欄の内訳 in（LG-05・設計 4.4）。入力欄で起きたことを起きたその場で数え、確定（text）か
+   破棄（cancel）のときにまとめて記録する。テキストラン編集で初めから入っている文字列は数えない（base に長さだけ残す） */
+const zeroIn = () => ({ key: 0, ime: 0, paste: 0, drop: 0, btn: 0, del: 0 });
+let capIn = zeroIn();
+let capBase = 0;
+let capBefore = null;                 // beforeinput 時点の値と選択範囲
+const clen = s => [...s].length;
+function takeIn(){ const v = capIn; capIn = zeroIn(); capBase = 0; return v; }
+/* 入力欄の中身を確定せずに捨てるとき（ESC・別のマスのクリックなど）に呼ぶ */
+function discardCap(){
+  const v = capIn;
+  if (v.key || v.ime || v.paste || v.drop || v.btn || v.del) logOp("cancel", { in: takeIn() });
+  else { capIn = zeroIn(); capBase = 0; }
+}
+function logText(x, y, mode, text){
+  const info = { x, y, mode, text, len: clen(text) };
+  if (mode === "run") info.base = capBase;
+  info.in = takeIn();
+  logOp("text", info);
+}
+{
+  const capEl = document.getElementById("cap");
+  capEl.addEventListener("beforeinput", () => {
+    capBefore = { v: capEl.value, s: capEl.selectionStart, t: capEl.selectionEnd };
+  });
+  capEl.addEventListener("input", e => {
+    const b = capBefore || { v: "", s: 0, t: 0 };
+    capBefore = null;
+    const type = e.inputType || "";
+    if (type === "insertCompositionText") return;       // 変換中は数えない（compositionend で数える）
+    const sel = clen(b.v.slice(b.s, b.t));               // 選択して置き換えた分
+    const grow = clen(capEl.value) - clen(b.v);
+    if (type.startsWith("delete")){ capIn.del += Math.max(0, -grow); return; }
+    if (type === "insertFromPaste"){ capIn.paste += Math.max(0, grow + sel); capIn.del += sel; return; }
+    if (type === "insertFromDrop"){  capIn.drop  += Math.max(0, grow + sel); capIn.del += sel; return; }
+    if (type.startsWith("insert")){  capIn.key   += e.data ? clen(e.data) : Math.max(0, grow + sel); capIn.del += sel; return; }
+    if (grow < 0) capIn.del += -grow;                    // historyUndo など：減った分だけ
+  });
+  capEl.addEventListener("compositionend", e => { if (e.data) capIn.ime += clen(e.data); });
 }
 
 /* 初期化 */
@@ -2133,8 +2081,9 @@ updateInfo();
 if (IN_ECLIPSE){
   setupEclipseBridge();  // 保存・ダーティ管理は Eclipse が行うので、自動保存と離脱確認は使わない
 } else {
-  startAutosave();
+  startAutosave();       // 自動保存から復元したときは、そのログを引き継ぐ
 }
+if (!workLog) startLog(null, IN_ECLIPSE ? "eclipse" : "new");   // Eclipse は loadSpd() で始め直す
 </script>
 </body>
 </html>

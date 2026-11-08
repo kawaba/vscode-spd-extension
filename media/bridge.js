@@ -87,7 +87,9 @@
     } else if (k === "s") {
       e.stopPropagation();
       e.preventDefault();
-      window.spdRequestSave();
+      // editor.html の requestEclipseSave() は保存を作業ログに記録してから spdRequestSave() を呼ぶ（v1.25.0〜）
+      if (typeof requestEclipseSave === "function") requestEclipseSave();
+      else window.spdRequestSave();
     }
   }, true);
 
