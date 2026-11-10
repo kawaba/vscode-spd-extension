@@ -123,7 +123,7 @@
       <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
       <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
     </div>
-    <h1>SPD Editor<span class="ver">ver. 1.26.0</span></h1>
+    <h1>SPD Editor<span class="ver">ver. 1.27.0</span></h1>
   </div>
 </div>
 
@@ -1096,9 +1096,11 @@ function insertText(text){
 
 /* ===== アンドゥ・リドゥ ===== */
 /* スナップショットには編集内容と一緒にファイル名も含める。
-   クリア／Import でファイル名表示を消すため、取り消しでは名前も一緒に戻す。 */
+   クリア／Import でファイル名表示を消すため、取り消しでは名前も一緒に戻す。
+   作業ログ（その時点の workLog と logT0）も持たせる。全消去ではログを始め直すので（LG-11）、
+   全消去を取り消したら前のログに戻し、やり直したら新しいログに戻す（取り消しでログを消せないように） */
 function takeSnapshot(){
-  return JSON.stringify({ data: data, fileName: currentFileName });
+  return { s: JSON.stringify({ data: data, fileName: currentFileName }), log: workLog, t0: logT0 };
 }
 function saveHistory(){
   undoStack.push(takeSnapshot());
@@ -1106,10 +1108,15 @@ function saveHistory(){
   redoStack.length = 0;
 }
 function applySnapshot(snapshot){
-  const snap = JSON.parse(snapshot);
+  const snap = JSON.parse(snapshot.s);
   for (const k in data) delete data[k];
   Object.assign(data, snap.data);
   currentFileName = snap.fileName || "";
+  if (snapshot.log && snapshot.log !== workLog){       // 全消去をまたいだ取り消し・やり直し
+    workLog = snapshot.log; logT0 = snapshot.t0;
+    opsSinceSnap = 0; lastSnapAt = Date.now();
+    exportHashes.clear(); lastCopyHash = null;          // 別のログの作業中の Export・コピーは self にしない
+  }
   updateFileName();
   refreshAll();
   updateInfo();
@@ -1862,6 +1869,9 @@ function clearAll(){
   const before = Object.keys(data).length;
   for (const k in data) delete data[k];
   logOp("clear", { before });
+  // 全消去は新しい SPD を書き始める操作なので、作業ログも新しく始める（LG-11）。
+  // 前のログは取り消し用の履歴に残る（取り消すと前のログに戻る）。prev は前のログの名札
+  startLog(null, "clear", { prev: workLog ? workLog.id : null });
   cancelSelection();
   textRunInfo = null;
   forgetFileName();          // 中身が空になる＝開いたファイルとは別物なのでファイル名表示を消す
@@ -1987,8 +1997,9 @@ function isoLocal(d){
 function logBody(cells){ return cells.map(c => [c.x, c.y, c.v]); }
 
 /* 作業を始める（LG-02）。log が正しい形ならそれを引き継ぎ、無ければ新しい名札（id）で作る。
-   from："new"＝起動時、"autosave"＝自動保存から復元、"eclipse"＝Eclipse から読み込み、"open"＝ログ付きのファイルを開いた */
-function startLog(log, from){
+   from："new"＝起動時、"autosave"＝自動保存から復元、"eclipse"＝Eclipse から読み込み、"open"＝ログ付きのファイルを開いた、
+         "clear"＝全消去（LG-11）。IDE の中では ide: true を付ける（集計画面が IDE の作業と分かるように）。extra は start に足す項目 */
+function startLog(log, from, extra){
   workLog = (log && typeof log.id === "string" && Array.isArray(log.entries))
           ? { ver: LOG_VER, id: log.id, entries: log.entries }
           : { ver: LOG_VER, id: newLogId(), entries: [] };
@@ -1996,7 +2007,8 @@ function startLog(log, from){
   opsSinceSnap = 0;
   exportHashes.clear();
   lastCopyHash = null;
-  logOp("start", { at: isoLocal(new Date()), ver: SPD_CORE_VERSION, lang: currentLang, from });
+  logOp("start", Object.assign({ at: isoLocal(new Date()), ver: SPD_CORE_VERSION, lang: currentLang, from },
+                               IN_ECLIPSE ? { ide: true } : {}, extra || {}));
 }
 /* 1 件記録する。cells は操作後のマスの数 */
 function logOp(op, info){

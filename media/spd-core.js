@@ -3,7 +3,7 @@
    画面（DOM）には触れず、マスのデータ（{ "x,y": 値 } の形。以下 d）を受け取って結果を返す関数だけを置く。
    spd-editor.html と同じフォルダに置く（root・1-python・2-java・3-C の4箇所に同じものを置く）。
    設計：docs/作業ログの設計.md の 3 章（最低限の入力量）・4.5（指紋）・7.1（切り出すもの） */
-const SPD_CORE_VERSION = "1.26.0";
+const SPD_CORE_VERSION = "1.27.0";
 
 /* ===== グリッドの大きさ ===== */
 const COLS = 90, ROWS = 500;
