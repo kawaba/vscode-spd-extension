@@ -3,7 +3,7 @@
    画面（DOM）には触れず、マスのデータ（{ "x,y": 値 } の形。以下 d）を受け取って結果を返す関数だけを置く。
    spd-editor.html と同じフォルダに置く（root・1-python・2-java・3-C の4箇所に同じものを置く）。
    設計：docs/作業ログの設計.md の 3 章（最低限の入力量）・4.5（指紋）・7.1（切り出すもの） */
-const SPD_CORE_VERSION = "1.25.0";
+const SPD_CORE_VERSION = "1.26.0";
 
 /* ===== グリッドの大きさ ===== */
 const COLS = 90, ROWS = 500;
@@ -90,9 +90,10 @@ const THYMELEAF_TITLES = {
   "［表（列）］": "表（列）（1列に1項目を並べる一覧表。データの件数だけ行を繰り返す）",
   "［画像］":     "画像（img）"
 };
-/* 括弧記号（Thymeleaf・v1.21.0）。配置後のカーソルは括弧の中央に置く（追記しやすいように） */
-const BRACKET_SYMBOLS = ["＜＞","{}","<<>>"];
+/* 括弧記号（Thymeleaf・v1.21.0。（） は v1.26.0）。配置後のカーソルは括弧の中央に置く（追記しやすいように） */
+const BRACKET_SYMBOLS = ["（）","＜＞","{}","<<>>"];
 const BRACKET_TITLES = {
+  "（）":  "（）（丸括弧）",
   "＜＞":  "＜＞（部品の種類。例：送信＜submit＞）",
   "{}":   "{}（変数・式。例：{変数}）",
   "<<>>": "<<>>（画像サイズ・CSS の指定）"
@@ -296,7 +297,7 @@ function dataToCells(d, r){
      R2 スタンプに含まれない単文字の記号（SPD_BORDER）は 1 マス 1 回
      R3 │ は、そのマスだけを空けたとき自動補完（colFill）で現れるなら 0、現れなければ 1
      R4 そのほかの文字は 1 字 1 単位（全角・半角とも。打った空白も 1。パディングの印は 0）
-     R5 Thymeleaf の括弧（{}・<<>>・＜＞）は開きで 1 回、閉じは 0。中の文字は R4
+     R5 Thymeleaf の括弧（（）・{}・<<>>・＜＞）は開きで 1 回、閉じは 0。中の文字は R4
      R6 スタンプの一覧は lang のもの
    空マスとインデントは数えない。自動補完の │（autoSet）は d に無いので数えない。
    迷う場合は少なめに数える（正当な学生を疑わない方向・設計 2.2） */
@@ -334,8 +335,8 @@ function countMinUnits(d, lang){
       if (thy){                                          // R5
         if (s.startsWith("<<", i)){ btn++; i += 2; continue; }
         if (s.startsWith(">>", i)){ i += 2; continue; }
-        if (ch === "{" || ch === "＜"){ btn++; i++; continue; }
-        if (ch === "}" || ch === "＞"){ i++; continue; }
+        if (ch === "{" || ch === "＜" || ch === "（"){ btn++; i++; continue; }
+        if (ch === "}" || ch === "＞" || ch === "）"){ i++; continue; }
       }
       if (ch === "│"){                                   // R3
         const k = key(xs[i], y), v = w[k];
