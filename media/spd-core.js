@@ -3,7 +3,7 @@
    画面（DOM）には触れず、マスのデータ（{ "x,y": 値 } の形。以下 d）を受け取って結果を返す関数だけを置く。
    spd-editor.html と同じフォルダに置く（root・1-python・2-java・3-C の4箇所に同じものを置く）。
    設計：docs/作業ログの設計.md の 3 章（最低限の入力量）・4.5（指紋）・7.1（切り出すもの） */
-const SPD_CORE_VERSION = "1.27.0";
+const SPD_CORE_VERSION = "1.28.0";
 
 /* ===== グリッドの大きさ ===== */
 const COLS = 90, ROWS = 500;
@@ -373,4 +373,23 @@ function spdHash(cells){
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/* ===== 試験モードの記録の鎖（v1.28.0・LG-12） =====
+   試験モードでは、作業ログの各記録に hc を付ける。hc は 1 つ前の記録の hc と、hc を除いたこの記録の JSON から作る
+   16 桁の 16 進（FNV-1a の 32 ビットを、種を変えて 2 本つなげたもの）。記録を 1 か所でも手で書き換えると、
+   そこから先の hc が合わなくなるので、集計画面で見つけられる。暗号ではない（抑止のためのもの） */
+function strHash32(str, seed){
+  let h = seed >>> 0;
+  for (let i = 0; i < str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+function logChainHash(prevHc, entry){
+  const rest = {};
+  for (const k in entry) if (k !== "hc") rest[k] = entry[k];
+  const s = (prevHc || "") + "\n" + JSON.stringify(rest);
+  return strHash32(s, 0x811c9dc5) + strHash32(s, 0x2c1b3c6d);
 }

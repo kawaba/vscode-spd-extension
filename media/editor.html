@@ -25,6 +25,8 @@
   .titlebar{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:0 0 12px; }
   h1{ font-size:15px; font-weight:600; margin:0; letter-spacing:.02em; text-align:right; }
   h1 .ver{ font-size:12px; font-weight:400; color:var(--text-dim); margin-left:8px; letter-spacing:0; }
+  /* 試験モードの表示（v1.28.0・LG-12） */
+  h1 .exam{ font-size:12px; font-weight:700; color:#fff; background:#c0392b; border-radius:4px; padding:1px 6px; margin-left:8px; letter-spacing:0; }
   .langbar{ display:flex; align-items:center; gap:10px; }
   /* ❓📖💡 外部リンク（タイトル行・「SPD Editor」表示の左側）。
      絵文字はクリックしやすいよう 28px の当たり判定を持たせ、ボタン同士の間隔は 2px にする（v1.23.0）。 */
@@ -123,7 +125,7 @@
       <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
       <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
     </div>
-    <h1>SPD Editor<span class="ver">ver. 1.27.0</span></h1>
+    <h1>SPD Editor<span class="ver">ver. 1.28.0</span></h1>
   </div>
 </div>
 
@@ -166,6 +168,9 @@ if (typeof SPD_CORE_VERSION === "undefined"){
    念のため Java の BrowserFunction が登録済みかどうかでも判定する。 */
 const IN_ECLIPSE = /[?&]host=eclipse(&|$)/.test(location.search)
                 || typeof window.spdGetInitialText === "function";
+/* 試験モード（v1.28.0・LG-12）。URL に ?exam を付けて開くと、Import と入力欄への貼り付け・ドロップを使えなくし、
+   作業ログの開始に exam: true、各記録に鎖の指紋 hc を付ける。ブラウザ版だけ（IDE の中では使わない） */
+const EXAM_MODE = !IN_ECLIPSE && /[?&]exam(=[^&]*)?(&|$)/.test(location.search);
 /* Eclipse 内での画面の種類。"editor"＝.spd ファイルのエディタ（保存＝上書き）、
    "view"＝ファイルなしで使うビュー（保存＝名前を付けて .spd に保存） */
 const ECLIPSE_MODE = (location.search.match(/[?&]mode=(\w+)/) || [])[1] || "editor";
@@ -358,7 +363,8 @@ function renderToolbox(){
   // 2段構成：段1=履歴(↩↪)＋言語別シンボル／段2=罫線・矢印・操作・クリア・入出力・保存/開く
   [
     ["__undo", "__redo", "|", ...symbols],
-    [...lineArrow, "|", "__insrow", "__delrow", "__cellcopy", "__cellpaste", "__erase", "__inscell", "|", "__clear", "|", "__copy", "__paste"]
+    [...lineArrow, "|", "__insrow", "__delrow", "__cellcopy", "__cellpaste", "__erase", "__inscell", "|", "__clear", "|", "__copy",
+     ...(EXAM_MODE ? [] : ["__paste"])]                  // 試験モードでは Import を出さない（LG-12）
   ].forEach((items, i) => {
     const row = document.createElement("div");
     row.className = "toolrow" + (i === 1 ? " toolrow-sep" : "");
@@ -1300,6 +1306,7 @@ function readClipboardText(){
 }
 
 function doPaste(partial){
+  if (EXAM_MODE) return;                               // 試験モードでは Import できない（LG-12）
   if (partial && !caret){
     infoEl.textContent = "貼り付け先のマスをクリックしてから Shift+Import してください";
     return;
@@ -1577,7 +1584,7 @@ async function doLoad(){
    AUTOSAVE_INTERVAL ごとに内容を比べ、変わっていたときだけ書き込む。
    file:// では4つの spd-editor.html が同じ保存領域を共有するため、キーにパスを含めて分ける。
    あわせて、保存していない変更があるときはページを離れる前にブラウザの確認を出す。 */
-const AUTOSAVE_KEY = "spd-autosave:" + location.pathname;
+const AUTOSAVE_KEY = "spd-autosave:" + location.pathname + (EXAM_MODE ? ":exam" : "");   // 試験モードは別の保存領域（LG-12）
 const AUTOSAVE_INTERVAL = 2000;       // ミリ秒
 let savedState = "";                  // 最後に保存した／開いた時点の内容（離脱確認の基準）
 let autosavedState = "";              // 最後に自動保存した時点の内容
@@ -2008,13 +2015,15 @@ function startLog(log, from, extra){
   exportHashes.clear();
   lastCopyHash = null;
   logOp("start", Object.assign({ at: isoLocal(new Date()), ver: SPD_CORE_VERSION, lang: currentLang, from },
-                               IN_ECLIPSE ? { ide: true } : {}, extra || {}));
+                               IN_ECLIPSE ? { ide: true } : {}, EXAM_MODE ? { exam: true } : {}, extra || {}));
 }
-/* 1 件記録する。cells は操作後のマスの数 */
+/* 1 件記録する。cells は操作後のマスの数。試験モードでは鎖の指紋 hc を最後に付ける（LG-12） */
 function logOp(op, info){
   if (!workLog) return;
-  workLog.entries.push(Object.assign({ n: workLog.entries.length, t: Date.now() - logT0, op },
-                                     info || {}, { cells: Object.keys(data).length }));
+  const es = workLog.entries;
+  const entry = Object.assign({ n: es.length, t: Date.now() - logT0, op }, info || {}, { cells: Object.keys(data).length });
+  if (EXAM_MODE) entry.hc = logChainHash(es.length ? es[es.length - 1].hc : "", entry);
+  es.push(entry);
   if (op === "start" || op === "snap") return;
   if (op === "save"){ opsSinceSnap = 0; lastSnapAt = Date.now(); return; }
   if (++opsSinceSnap >= SNAP_OPS) takeSnap();
@@ -2061,9 +2070,20 @@ function logText(x, y, mode, text){
 }
 {
   const capEl = document.getElementById("cap");
-  capEl.addEventListener("beforeinput", () => {
+  capEl.addEventListener("beforeinput", e => {
+    // 試験モードでは入力欄への貼り付け・ドロップを受け付けない（LG-12）
+    if (EXAM_MODE && /^insertFrom(Paste|Drop|PasteAsQuotation)$/.test(e.inputType || "")){
+      e.preventDefault();
+      infoEl.textContent = "試験モードでは貼り付けできません。自分で打ってください";
+      return;
+    }
     capBefore = { v: capEl.value, s: capEl.selectionStart, t: capEl.selectionEnd };
   });
+  if (EXAM_MODE){
+    const block = e => { e.preventDefault(); infoEl.textContent = "試験モードでは貼り付けできません。自分で打ってください"; };
+    capEl.addEventListener("paste", block);
+    capEl.addEventListener("drop", block);
+  }
   capEl.addEventListener("input", e => {
     const b = capBefore || { v: "", s: 0, t: 0 };
     capBefore = null;
@@ -2096,6 +2116,14 @@ if (IN_ECLIPSE){
   startAutosave();       // 自動保存から復元したときは、そのログを引き継ぐ
 }
 if (!workLog) startLog(null, IN_ECLIPSE ? "eclipse" : "new");   // Eclipse は loadSpd() で始め直す
+if (EXAM_MODE){                                       // 試験モードの表示（LG-12）
+  const badge = document.createElement("span");
+  badge.className = "exam"; badge.textContent = "試験モード";
+  badge.title = "Import と入力欄への貼り付けは使えません。問題ファイルは、始めに「開く」で 1 回だけ開いてください";
+  document.querySelector("h1").appendChild(badge);
+  document.title = "SPD Editor（試験モード）";
+  infoEl.textContent = "試験モード：Import と貼り付けは使えません。問題ファイルがあれば、始めに「開く」で開いてください";
+}
 </script>
 </body>
 </html>
