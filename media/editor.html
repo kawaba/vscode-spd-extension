@@ -25,8 +25,9 @@
   .titlebar{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:0 0 12px; }
   h1{ font-size:15px; font-weight:600; margin:0; letter-spacing:.02em; text-align:right; }
   h1 .ver{ font-size:12px; font-weight:400; color:var(--text-dim); margin-left:8px; letter-spacing:0; }
-  /* 試験モードの表示（v1.28.0・LG-12） */
-  h1 .exam{ font-size:12px; font-weight:700; color:#fff; background:#c0392b; border-radius:4px; padding:1px 6px; margin-left:8px; letter-spacing:0; }
+  /* 利用モードの札（v1.28.0・LG-12、v1.29.0・LG-13）。試験は赤、Import 許可は青。デフォルトは札を出さない */
+  h1 .exam, h1 .imp{ font-size:12px; font-weight:700; color:#fff; background:#c0392b; border-radius:4px; padding:1px 6px; margin-left:8px; letter-spacing:0; }
+  h1 .imp{ background:#2471a3; }
   .langbar{ display:flex; align-items:center; gap:10px; }
   /* ❓📖💡 外部リンク（タイトル行・「SPD Editor」表示の左側）。
      絵文字はクリックしやすいよう 28px の当たり判定を持たせ、ボタン同士の間隔は 2px にする（v1.23.0）。 */
@@ -125,7 +126,7 @@
       <a class="helplink" id="lnkGuide" href="#" target="_blank" rel="noopener noreferrer" title="SPDの解説・書き方">&#x1F4D6;</a>
       <a class="helplink" id="lnkPattern" href="#" target="_blank" rel="noopener noreferrer" title="SPDの記述パターン">&#x1F4A1;</a>
     </div>
-    <h1>SPD Editor<span class="ver">ver. 1.28.0</span></h1>
+    <h1>SPD Editor<span class="ver">ver. 1.29.0</span></h1>
   </div>
 </div>
 
@@ -168,9 +169,21 @@ if (typeof SPD_CORE_VERSION === "undefined"){
    念のため Java の BrowserFunction が登録済みかどうかでも判定する。 */
 const IN_ECLIPSE = /[?&]host=eclipse(&|$)/.test(location.search)
                 || typeof window.spdGetInitialText === "function";
-/* 試験モード（v1.28.0・LG-12）。URL に ?exam を付けて開くと、Import と入力欄への貼り付け・ドロップを使えなくし、
-   作業ログの開始に exam: true、各記録に鎖の指紋 hc を付ける。ブラウザ版だけ（IDE の中では使わない） */
-const EXAM_MODE = !IN_ECLIPSE && /[?&]exam(=[^&]*)?(&|$)/.test(location.search);
+/* 利用モード（v1.29.0・LG-13。試験モードは v1.28.0・LG-12）
+   "default"＝Import と入力欄への貼り付け・ドロップを使えない（入門者が打たずに済ませないように。既定）
+   "import" ＝Import と貼り付けを使える
+   "exam"   ＝試験。default と同じく使えないうえ、自動保存を分け、札を出す
+   決め方：URL の ?exam・?import ＞ 設定 SPD_CONFIG.mode ＞ "default"。IDE の中でも同じ（Eclipse は URL、VS Code は SPD_CONFIG で渡す）。
+   作業ログの start に mode を残し（試験は従来どおり exam: true も）、どのモードでも各記録に鎖の指紋 hc を付ける */
+const SPD_MODES = ["default", "import", "exam"];
+const SPD_MODE = /[?&]exam(=[^&]*)?(&|$)/.test(location.search) ? "exam"
+               : /[?&]import(=[^&]*)?(&|$)/.test(location.search) ? "import"
+               : (typeof SPD_CONFIG !== "undefined" && SPD_CONFIG && SPD_MODES.includes(SPD_CONFIG.mode)) ? SPD_CONFIG.mode
+               : "default";
+const EXAM_MODE = SPD_MODE === "exam";
+const IMPORT_OK = SPD_MODE === "import";        // Import と入力欄への貼り付け・ドロップを使えるか
+const NO_PASTE_MSG = EXAM_MODE ? "試験モードでは貼り付けできません。自分で打ってください"
+                               : "入力欄への貼り付けはできません。自分で打ってください";
 /* Eclipse 内での画面の種類。"editor"＝.spd ファイルのエディタ（保存＝上書き）、
    "view"＝ファイルなしで使うビュー（保存＝名前を付けて .spd に保存） */
 const ECLIPSE_MODE = (location.search.match(/[?&]mode=(\w+)/) || [])[1] || "editor";
@@ -364,7 +377,7 @@ function renderToolbox(){
   [
     ["__undo", "__redo", "|", ...symbols],
     [...lineArrow, "|", "__insrow", "__delrow", "__cellcopy", "__cellpaste", "__erase", "__inscell", "|", "__clear", "|", "__copy",
-     ...(EXAM_MODE ? [] : ["__paste"])]                  // 試験モードでは Import を出さない（LG-12）
+     ...(IMPORT_OK ? ["__paste"] : [])]                  // Import は Import 許可モードだけ（LG-13）
   ].forEach((items, i) => {
     const row = document.createElement("div");
     row.className = "toolrow" + (i === 1 ? " toolrow-sep" : "");
@@ -1306,7 +1319,7 @@ function readClipboardText(){
 }
 
 function doPaste(partial){
-  if (EXAM_MODE) return;                               // 試験モードでは Import できない（LG-12）
+  if (!IMPORT_OK) return;                              // Import は Import 許可モードだけ（LG-13）
   if (partial && !caret){
     infoEl.textContent = "貼り付け先のマスをクリックしてから Shift+Import してください";
     return;
@@ -1584,7 +1597,7 @@ async function doLoad(){
    AUTOSAVE_INTERVAL ごとに内容を比べ、変わっていたときだけ書き込む。
    file:// では4つの spd-editor.html が同じ保存領域を共有するため、キーにパスを含めて分ける。
    あわせて、保存していない変更があるときはページを離れる前にブラウザの確認を出す。 */
-const AUTOSAVE_KEY = "spd-autosave:" + location.pathname + (EXAM_MODE ? ":exam" : "");   // 試験モードは別の保存領域（LG-12）
+const AUTOSAVE_KEY = "spd-autosave:" + location.pathname + (SPD_MODE === "default" ? "" : ":" + SPD_MODE);   // モードごとに別の保存領域（LG-13）
 const AUTOSAVE_INTERVAL = 2000;       // ミリ秒
 let savedState = "";                  // 最後に保存した／開いた時点の内容（離脱確認の基準）
 let autosavedState = "";              // 最後に自動保存した時点の内容
@@ -2014,15 +2027,15 @@ function startLog(log, from, extra){
   opsSinceSnap = 0;
   exportHashes.clear();
   lastCopyHash = null;
-  logOp("start", Object.assign({ at: isoLocal(new Date()), ver: SPD_CORE_VERSION, lang: currentLang, from },
+  logOp("start", Object.assign({ at: isoLocal(new Date()), ver: SPD_CORE_VERSION, lang: currentLang, from, mode: SPD_MODE },
                                IN_ECLIPSE ? { ide: true } : {}, EXAM_MODE ? { exam: true } : {}, extra || {}));
 }
-/* 1 件記録する。cells は操作後のマスの数。試験モードでは鎖の指紋 hc を最後に付ける（LG-12） */
+/* 1 件記録する。cells は操作後のマスの数。鎖の指紋 hc を最後に付ける（LG-12。v1.29.0 からはどのモードでも・LG-13） */
 function logOp(op, info){
   if (!workLog) return;
   const es = workLog.entries;
   const entry = Object.assign({ n: es.length, t: Date.now() - logT0, op }, info || {}, { cells: Object.keys(data).length });
-  if (EXAM_MODE) entry.hc = logChainHash(es.length ? es[es.length - 1].hc : "", entry);
+  entry.hc = logChainHash(es.length ? es[es.length - 1].hc : "", entry);
   es.push(entry);
   if (op === "start" || op === "snap") return;
   if (op === "save"){ opsSinceSnap = 0; lastSnapAt = Date.now(); return; }
@@ -2071,16 +2084,16 @@ function logText(x, y, mode, text){
 {
   const capEl = document.getElementById("cap");
   capEl.addEventListener("beforeinput", e => {
-    // 試験モードでは入力欄への貼り付け・ドロップを受け付けない（LG-12）
-    if (EXAM_MODE && /^insertFrom(Paste|Drop|PasteAsQuotation)$/.test(e.inputType || "")){
+    // Import 許可モード以外では入力欄への貼り付け・ドロップを受け付けない（LG-12・LG-13）
+    if (!IMPORT_OK && /^insertFrom(Paste|Drop|PasteAsQuotation)$/.test(e.inputType || "")){
       e.preventDefault();
-      infoEl.textContent = "試験モードでは貼り付けできません。自分で打ってください";
+      infoEl.textContent = NO_PASTE_MSG;
       return;
     }
     capBefore = { v: capEl.value, s: capEl.selectionStart, t: capEl.selectionEnd };
   });
-  if (EXAM_MODE){
-    const block = e => { e.preventDefault(); infoEl.textContent = "試験モードでは貼り付けできません。自分で打ってください"; };
+  if (!IMPORT_OK){
+    const block = e => { e.preventDefault(); infoEl.textContent = NO_PASTE_MSG; };
     capEl.addEventListener("paste", block);
     capEl.addEventListener("drop", block);
   }
@@ -2123,6 +2136,11 @@ if (EXAM_MODE){                                       // 試験モードの表�
   document.querySelector("h1").appendChild(badge);
   document.title = "SPD Editor（試験モード）";
   infoEl.textContent = "試験モード：Import と貼り付けは使えません。問題ファイルがあれば、始めに「開く」で開いてください";
+} else if (IMPORT_OK){                                // Import 許可モードの表示（LG-13）
+  const badge = document.createElement("span");
+  badge.className = "imp"; badge.textContent = "Import 可";
+  badge.title = "Import と入力欄への貼り付けを使えるモードです（使ったことは作業の記録に残ります）";
+  document.querySelector("h1").appendChild(badge);
 }
 </script>
 </body>

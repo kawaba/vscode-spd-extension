@@ -2,7 +2,7 @@
   "name": "spd-editor",
   "displayName": "SPD Editor",
   "description": "SPD（構造化プログラム設計図）エディタ。.spd ファイルを方眼の画面で描いて編集できます。",
-  "version": "1.28.0",
+  "version": "1.29.0",
   "publisher": "kawaba",
   "license": "EPL-2.0",
   "icon": "icons/icon.png",
@@ -74,6 +74,11 @@
         "icon": "icons/spd@2x.png"
       },
       {
+        "command": "spd.selectMode",
+        "title": "利用モードを選ぶ",
+        "category": "SPD"
+      },
+      {
         "command": "spd.openFontFolder",
         "title": "フォントのフォルダを開く",
         "category": "SPD"
@@ -129,6 +134,26 @@
           ],
           "default": "python",
           "markdownDescription": "言語が書かれていない（空の）ファイルや SPD ビューを開いたときの言語。"
+        },
+        "spd.mode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "import",
+            "exam"
+          ],
+          "enumItemLabels": [
+            "デフォルト",
+            "Import 許可",
+            "試験"
+          ],
+          "markdownEnumDescriptions": [
+            "Import と入力欄への貼り付けを使えない（ふだんの課題用）",
+            "Import と入力欄への貼り付けを使える。画面に「Import 可」の札が出る",
+            "試験用。Import と入力欄への貼り付けを使えない。画面に「試験モード」の札が出る"
+          ],
+          "default": "default",
+          "markdownDescription": "SPD エディタの利用モード。どのモードで開いたかは作業ログに残ります。変えたあとは、開いている SPD エディタを開き直してください（SPD ビューはウィンドウの再読み込みで変わります）。コマンド「SPD: 利用モードを選ぶ」でも選べます。"
         }
       }
     }

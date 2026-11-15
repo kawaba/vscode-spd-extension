@@ -37,11 +37,26 @@ export function webviewOptions(extensionUri: vscode.Uri): vscode.WebviewOptions 
     return { enableScripts: true, localResourceRoots: [mediaUri(extensionUri)] };
 }
 
-/** spd-config.js の SPD_CONFIG に当たるもの。既定の言語は VS Code の設定 spd.defaultLanguage */
-export function spdConfig(): { lang: string; langs: string[] } {
+/**
+ * 利用モード（元の仕様書 §6.14 LG-13・CF-07）。default＝Import と入力欄への貼り付けを使えない、
+ * import＝使える、exam＝試験。VS Code の設定 spd.mode で選び、SPD_CONFIG.mode として editor.html に渡す
+ */
+export const SPD_MODES = [
+    { value: "default", label: "デフォルト", detail: "Import と入力欄への貼り付けを使えない（ふだんの課題用）" },
+    { value: "import", label: "Import 許可", detail: "Import と入力欄への貼り付けを使える" },
+    { value: "exam", label: "試験", detail: "試験用。Import と入力欄への貼り付けを使えない" },
+] as const;
+
+export function spdModeSetting(): string {
+    const mode = vscode.workspace.getConfiguration("spd").get<string>("mode", "default");
+    return SPD_MODES.some(m => m.value === mode) ? mode : "default";
+}
+
+/** spd-config.js の SPD_CONFIG に当たるもの。既定の言語は VS Code の設定 spd.defaultLanguage、モードは spd.mode */
+export function spdConfig(): { lang: string; langs: string[]; mode: string } {
     const langs = LANGS.map(l => l.value as string);
     const lang = vscode.workspace.getConfiguration("spd").get<string>("defaultLanguage", "python");
-    return { lang: langs.includes(lang) ? lang : langs[0], langs };
+    return { lang: langs.includes(lang) ? lang : langs[0], langs, mode: spdModeSetting() };
 }
 
 export function buildHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode: SpdMode): string {

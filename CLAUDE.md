@@ -39,6 +39,9 @@ icons/icon.png            Marketplace 用のアイコン（256×256）。spd.png
 - 約束事（`loadSpd`・`getSpdText`・`spdNotifyChanged` など）を元で変えるときは、Eclipse 版の SpdBrowser.java と
   この拡張機能の `media/bridge.js` も同時に直す
 - `spd-config.js` は使わない。`bridge.js` が `SPD_CONFIG` を渡す（`src/webview.ts` の `spdConfig()`）
+- 利用モード（v1.29.0・元の仕様書 LG-13・CF-07）は設定 `spd.mode`（`default`／`import`／`exam`）を `SPD_CONFIG.mode` で渡す。
+  画面を開くときに渡すので、開いている画面には効かない（設定を変えたら `notifyModeChanged()` で開き直し方を知らせる）。
+  コマンド `spd.selectMode` でも選べる（ワークスペースの設定で決めてあればそちらを書き換える）
 - 言語のラジオは **Python・C だけ**（2026-10-29 決定）。`src/webview.ts` の `LANGS` で決め、新規SPDファイルの言語もこの中から選ぶ。
   既定の言語は設定 `spd.defaultLanguage`。Java 系で保存した `.spd` を開くと、editor.html がその言語のラジオを足す（CF-06）。
   Java 系のスケルトン（`javase-` / `spring-` / `thymeleaf-patterns.js`）はそのようなファイルのために残している

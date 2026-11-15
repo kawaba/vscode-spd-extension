@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { SpdEditorProvider } from "./spdEditorProvider";
 import { SpdViewProvider } from "./spdViewProvider";
-import { initialJson, LANGS, spdConfig, suggestSpdUri } from "./webview";
+import { initialJson, LANGS, SPD_MODES, spdConfig, spdModeSetting, suggestSpdUri } from "./webview";
 
 /** 前回選んだ言語を覚えておくキー（globalState） */
 const LAST_LANG_KEY = "spd.newFile.lang";
@@ -24,6 +24,13 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand("spd.newFileMenu", () => newSpdFile(context)),
         vscode.commands.registerCommand("spd.openView", () =>
             vscode.commands.executeCommand(`${SpdViewProvider.viewType}.focus`)),
+        vscode.commands.registerCommand("spd.selectMode", selectMode),
+        // 利用モードは画面を開くときに渡すので、開いている画面には効かない。開き直し方を知らせる
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration("spd.mode")) {
+                void notifyModeChanged();
+            }
+        }),
         vscode.commands.registerCommand("spd.openFontFolder", () =>
             vscode.commands.executeCommand("revealFileInOS",
                 vscode.Uri.joinPath(context.extensionUri, "media", "fonts", "PlemolJPHS-Regular.ttf"))),
@@ -85,6 +92,37 @@ async function newSpdFile(context: vscode.ExtensionContext, folder?: vscode.Uri)
     await vscode.workspace.fs.writeFile(uri, Buffer.from(initialJson(lang.value), "utf8"));
     await context.globalState.update(LAST_LANG_KEY, lang.value);
     await vscode.commands.executeCommand("vscode.openWith", uri, SpdEditorProvider.viewType);
+}
+
+/** 利用モード（設定 spd.mode）を一覧から選ぶ。ワークスペースの設定で決めてあれば、そちらを書き換える */
+async function selectMode(): Promise<void> {
+    const cur = spdModeSetting();
+    const items = SPD_MODES.map(m => ({
+        label: m.label, detail: m.detail, value: m.value as string,
+        description: m.value === cur ? "（今のモード）" : "",
+    }));
+    const pick = await vscode.window.showQuickPick(items, {
+        title: "SPD エディタの利用モード",
+        placeHolder: "モードを選んでください",
+    });
+    if (!pick || pick.value === cur) {
+        return;
+    }
+    const cfg = vscode.workspace.getConfiguration("spd");
+    const target = cfg.inspect("mode")?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+    await cfg.update("mode", pick.value, target);
+}
+
+async function notifyModeChanged(): Promise<void> {
+    const name = SPD_MODES.find(m => m.value === spdModeSetting())?.label ?? "";
+    const reload = "ウィンドウの再読み込み";
+    const ans = await vscode.window.showInformationMessage(
+        `SPD エディタの利用モードを「${name}」にしました。次に開いた SPD エディタから効きます。`
+        + "開いている SPD エディタは開き直してください（SPD ビューはウィンドウの再読み込みで変わります）。", reload);
+    if (ans === reload) {
+        await vscode.commands.executeCommand("workbench.action.reloadWindow");
+    }
 }
 
 async function exists(uri: vscode.Uri): Promise<boolean> {
