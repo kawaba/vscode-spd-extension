@@ -97,10 +97,36 @@ export class SpdViewProvider implements vscode.WebviewViewProvider {
     // 名前を付けて .spd に保存
     // ---------------------------------------------------------------
 
+    /**
+     * 保存先の提案。
+     * フォルダー：前回保存したフォルダー（まだあれば）。なければアクティブなエディタのファイルと同じフォルダー。
+     * 名前：アクティブなエディタのファイルと同じ名前（例：Hello.java → Hello.spd）。なければ前回保存した名前。
+     */
+    private async suggestUri(): Promise<vscode.Uri | undefined> {
+        const fromEditor = vscode.window.activeTextEditor?.document.uri.scheme === "file" ? suggestSpdUri() : undefined;
+        const last = this.context.workspaceState.get<string>(SpdViewProvider.LAST_SAVED_KEY);
+        if (last) {
+            const lastUri = vscode.Uri.parse(last);
+            const dir = vscode.Uri.joinPath(lastUri, "..");
+            try {
+                if ((await vscode.workspace.fs.stat(dir)).type & vscode.FileType.Directory) {
+                    const name = (fromEditor ?? lastUri).path.split("/").pop()!;
+                    return vscode.Uri.joinPath(dir, name);
+                }
+            } catch {
+                // フォルダーが消えていれば、前回の保存先は使わない
+            }
+        }
+        return suggestSpdUri();
+    }
+
+    /** 前回の保存先を覚えておくキー（workspaceState。ワークスペースごとに覚え、再起動しても残る） */
+    private static readonly LAST_SAVED_KEY = "spd.view.lastSaved";
+
     private async saveAs(text: string): Promise<void> {
         let uri = await vscode.window.showSaveDialog({
             title: "SPD をファイルに保存",
-            defaultUri: suggestSpdUri(),
+            defaultUri: await this.suggestUri(),
             filters: { "SPD ファイル": ["spd"] },
         });
         if (!uri) {
@@ -115,6 +141,7 @@ export class SpdViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showErrorMessage(`保存できませんでした: ${e instanceof Error ? e.message : e}`);
             return;
         }
+        await this.context.workspaceState.update(SpdViewProvider.LAST_SAVED_KEY, uri.toString());
         const open = "開く";
         const choice = await vscode.window.showInformationMessage(`SPD を保存しました: ${uri.fsPath}`, open);
         if (choice === open) {
